@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mid-Air Emoji Search</title>
+<style>
+  :root { --bg:#0f1115; --panel:#1a1d24; --line:#2a2f3a; --fg:#e6e9ef; --muted:#9aa3b2; --accent:#5b8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:18px 24px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns: 360px 1fr; gap:0; min-height: calc(100vh - 64px); }
+  .inputs { padding:20px; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:24px; }
+  .panel h2 { margin:0 0 10px; font-size:14px; color:var(--muted); font-weight:600; }
+  input[type=text] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel); color:var(--fg); font-size:15px; }
+  .row { display:flex; gap:8px; margin-top:10px; align-items:center; }
+  button { padding:9px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel);
+    color:var(--fg); font-size:14px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button:hover { filter:brightness(1.1); }
+  canvas { background:#fff; border-radius:8px; border:1px solid var(--line); touch-action:none; cursor:crosshair; }
+  label.k { color:var(--muted); font-size:13px; }
+  .results-wrap { padding:20px; }
+  #status { color:var(--muted); font-size:13px; min-height:18px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px;
+    display:flex; flex-direction:column; align-items:center; text-align:center; }
+  .card img { width:64px; height:64px; image-rendering:auto; }
+  .card .label { font-size:12px; margin-top:8px; color:var(--fg); }
+  .card .score { font-size:11px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }
+  .card .hex { font-size:10px; color:var(--muted); margin-top:2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mid-Air Emoji Search</h1>
+  <p>テキスト or 手書きで絵文字を検索（非同期バックグラウンド処理）</p>
+</header>
+<main>
+  <section class="inputs">
+    <div class="panel">
+      <h2>テキスト検索</h2>
+      <input id="q" type="text" placeholder="例: smiling cat / red heart / fire" />
+      <div class="row">
+        <button class="primary" onclick="searchText()">検索</button>
+        <label class="k">top-k</label>
+        <input id="topk" type="text" value="12" style="width:56px" />
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>手書き検索</h2>
+      <canvas id="pad" width="320" height="320"></canvas>
+      <div class="row">
+        <button class="primary" onclick="searchImage()">この絵で検索</button>
+        <button onclick="clearPad()">クリア</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="results-wrap">
+    <div id="status"></div>
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+
+<script>
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const $ = (id) => document.getElementById(id);
+const setStatus = (t) => { $("status").textContent = t; };
+const topK = () => Math.max(1, parseInt($("topk").value, 10) || 12);
+
+// --- 手書きキャンバス ---
+const canvas = $("pad");
+const ctx = canvas.getContext("2d");
+function clearPad() { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+clearPad();
+ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#000";
+let drawing = false;
+function posOf(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - r.left) * canvas.width / r.width, y: (t.clientY - r.top) * canvas.height / r.height };
+}
+function start(e) { drawing = true; const p = posOf(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
+function move(e) { if (!drawing) return; const p = posOf(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
+function end() { drawing = false; }
+canvas.addEventListener("mousedown", start);
+canvas.addEventListener("mousemove", move);
+window.addEventListener("mouseup", end);
+canvas.addEventListener("touchstart", start, { passive: false });
+canvas.addEventListener("touchmove", move, { passive: false });
+canvas.addEventListener("touchend", end);
+
+// --- 非同期検索 (job 投入 -> ポーリング) ---
+async function runJob(url, body) {
+  setStatus("検索中…");
+  $("grid").innerHTML = "";
+  try {
+    const res = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const { job_id } = await res.json();
+    while (true) {
+      await sleep(300);
+      const job = await (await fetch(`/api/jobs/${job_id}`)).json();
+      if (job.status === "done") { render(job.results); setStatus(`${job.results.length} 件`); return; }
+      if (job.status === "error") { setStatus("エラー: " + job.error); return; }
+    }
+  } catch (e) {
+    setStatus("通信エラー: " + e);
+  }
+}
+
+function searchText() {
+  const q = $("q").value.trim();
+  if (!q) { setStatus("テキストを入力してください"); return; }
+  runJob("/api/search/text", { query: q, top_k: topK() });
+}
+
+function searchImage() {
+  const dataUrl = canvas.toDataURL("image/png");
+  runJob("/api/search/image", { image: dataUrl, top_k: topK() });
+}
+
+function render(results) {
+  const grid = $("grid");
+  grid.innerHTML = "";
+  for (const r of results) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <img src="${r.image_url}" alt="${r.label}" loading="lazy" />
+      <div class="label">${r.emoji} ${r.label}</div>
+      <div class="score">score ${r.score}</div>
+      <div class="hex">${r.id}</div>`;
+    grid.appendChild(card);
+  }
+}
+
+// Enter で検索
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") searchText(); });
+</script>
+</body>
+</html>

@@ -15,13 +15,15 @@
 
 共通基盤 `midair-shared` が **encoder 契約 / FAISS ユーティリティ / 統合契約 (`Searcher`)** を提供し、
 統合アプリ `midair-app` が `mode` に応じて各サブシステムを遅延ロードして振り分ける。
+ブラウザ UI は `midair-web`（FastAPI）が提供する — テキスト / 手書き入力、結果を画像表示、非同期検索。
 
 ## リポジトリ構成 (uv workspace monorepo)
 
 ```
 mi-midair-input/
 ├── pyproject.toml              # uv workspace root (package=false, members=packages/*)
-├── README.md / DESIGN.md / CLAUDE.md
+├── README.md / DESIGN.md / CLAUDE.md / DOCKER.md
+├── Dockerfile / docker-compose.yml / .dockerignore
 ├── packages/
 │   ├── shared/                 # midair-shared: 共通基盤
 │   │   └── src/midair_shared/
@@ -33,8 +35,10 @@ mi-midair-input/
 │   │   └── src/emoji_search/   #   encoder.py / data.py / searcher.py
 │   ├── japanese-search/        # 日本語入力 (スケルトン)
 │   ├── english-search/         # 英語入力 (スケルトン)
-│   └── app/                    # midair-app: 統合 CLI (`midair`)
-│       └── src/midair_app/     #   registry.py / __main__.py
+│   ├── app/                    # midair-app: 統合 CLI (`midair`)
+│   │   └── src/midair_app/     #   registry.py / __main__.py
+│   └── web/                    # midair-web: Web アプリ (FastAPI, 非同期検索)
+│       └── src/midair_web/     #   app.py / __main__.py / static/index.html
 └── data/                       # git 管理外 (.gitkeep のみ追跡)
     ├── emoji_search/           #   openmoji/ + openmoji.json + index.faiss + metadata.jsonl
     ├── japanese_search/
@@ -73,9 +77,31 @@ uv run midair --mode japanese --query "..."   # 未実装 (スケルトン)
 uv run midair --mode english  --query "..."   # 未実装 (スケルトン)
 ```
 
+## 使い方 (Web アプリ)
+
+```bash
+uv run midair-web --port 8000     # http://127.0.0.1:8000
+```
+
+テキスト入力と手書きキャンバスの 2 入力に対応。結果は絵文字画像のグリッドで表示し、
+検索は非同期ジョブでバックグラウンド実行する。詳細は [`packages/web/README.md`](packages/web/README.md)。
+
+## Docker で動かす (Intel Mac / GPU 無し)
+
+環境依存を抑えるため Docker でも動く（torch は CPU 版、CLIP モデルはイメージに焼き込み）。
+
+```bash
+docker compose build                                # イメージ作成
+docker compose --profile setup run --rm prepare     # 初回: データ取得 + index 構築
+docker compose up web                               # http://localhost:8000
+```
+
+詳細は [`DOCKER.md`](DOCKER.md)。
+
 ## ドキュメント
 
 - [`DESIGN.md`](DESIGN.md) — 絵文字検索の設計メモ
+- [`DOCKER.md`](DOCKER.md) — Docker でのローカル実行 (Intel Mac / CPU)
 - [`CLAUDE.md`](CLAUDE.md) — システム全体構成 / 開発フロー (git-flow) / エージェント向け指針
 - `packages/*/README.md` — 各サブシステムの詳細
 

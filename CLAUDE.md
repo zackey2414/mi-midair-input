@@ -19,6 +19,7 @@
 | `japanese-search` | `japanese_search` | 日本語入力 (スケルトン) |
 | `english-search` | `english_search` | 英語入力 (スケルトン) |
 | `midair-app` | `midair_app` | 統合アプリ。`mode` で各 Searcher を遅延ロードして振り分け。`midair` CLI |
+| `midair-web` | `midair_web` | 検索 Web アプリ (FastAPI)。テキスト/手書き入力、非同期ジョブ、画像で結果表示。port 8000 |
 
 ### 統合の継ぎ目 (重要)
 
@@ -27,6 +28,13 @@
 - **新サブシステム追加手順**: (1) `packages/` に追加 → (2) `Searcher` を実装 → (3) `registry.build_searcher` に登録。
 - **データ隔離**: サブシステム別に `data/<name>_search/` に置き、相互干渉させない。中身は git 管理外 (`.gitkeep` のみ追跡)。
 - **モデル整合**: encoder の差し替え・モデル変更時は index を再構築する (index 構築時と検索時で同一モデル = 共通空間が前提)。`data/<name>_search/index_meta.json` に `model_id`/`dim`/`normalize` を記録している。
+
+## 実行環境 (ローカル / Docker)
+
+- **配布ターゲットは Intel Mac (linux/amd64, GPU 無し)**。環境依存を抑えるため Docker ベースで動かす (`DOCKER.md`)。
+- torch は **CPU 版が既定**: `pyproject.toml` の `[[tool.uv.index]] pytorch-cpu` + emoji-search の `torch = { index = "pytorch-cpu" }`。`uv.lock` も CPU 解決済み (nvidia-* を含まない)。
+- GPU で index 構築を高速化したいときだけ `UV_TORCH_BACKEND=cu124 uv sync` 等で上書きする (Docker 運用は CPU のまま)。
+- Docker: `data/` はボリュームマウントで永続化、CLIP モデルはイメージに焼き込み (実行時ネット不要)。`MIDAIR_DATA_DIR` で各エントリのデータルートを上書きできる。
 
 ## 開発フロー (git-flow)
 

@@ -13,6 +13,7 @@ GitHub Releases から 72x72 カラー PNG (zip) と ``openmoji.json`` を取得
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import urllib.request
 import zipfile
@@ -28,9 +29,10 @@ METADATA_URL = (
     f"{OPENMOJI_VERSION}/data/openmoji.json"
 )
 
+# データルートは MIDAIR_DATA_DIR 優先、無ければ repo root/data。
 # .../packages/emoji-search/scripts/download_openmoji.py -> repo root は parents[3]
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = REPO_ROOT / "data" / "emoji_search"
+DATA_DIR = Path(os.environ.get("MIDAIR_DATA_DIR") or (REPO_ROOT / "data")) / "emoji_search"
 
 
 def _download(url: str, dest: Path) -> None:

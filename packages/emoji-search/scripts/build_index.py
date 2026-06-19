@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
@@ -22,9 +23,10 @@ from emoji_search.data import load_emoji_records, load_rgb_on_white
 from emoji_search.encoder import DEFAULT_MODEL, ClipEncoder
 from midair_shared.index import build_flat_ip, save_index
 
+# データルートは MIDAIR_DATA_DIR 優先、無ければ repo root/data。
 # .../packages/emoji-search/scripts/build_index.py -> repo root は parents[3]
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = REPO_ROOT / "data" / "emoji_search"
+DATA_DIR = Path(os.environ.get("MIDAIR_DATA_DIR") or (REPO_ROOT / "data")) / "emoji_search"
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +66,9 @@ def main() -> None:
     with open(args.metadata_out, "w", encoding="utf-8") as f:
         for row_id, record in enumerate(records):
             row = {"row_id": row_id, **record.as_dict()}
+            # image_path は data/emoji_search/ からの相対パスで保存する。
+            # (表示は hexcode 由来なので未使用だが、絶対パスを残さず配布物を移植可能にするため)
+            row["image_path"] = f"openmoji/{record.hexcode}.png"
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     meta = {
