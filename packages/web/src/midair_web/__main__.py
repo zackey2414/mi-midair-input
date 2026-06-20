@@ -8,7 +8,7 @@ import argparse
 def main() -> None:
     parser = argparse.ArgumentParser(prog="midair-web", description="絵文字検索 Web アプリ")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8762)
     parser.add_argument("--reload", action="store_true", help="開発用オートリロード")
     args = parser.parse_args()
 

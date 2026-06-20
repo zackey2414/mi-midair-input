@@ -6,7 +6,7 @@ torch は **CPU 版** を `uv.lock` で固定し、CLIP モデルはイメージ
 
 ```
 構成: Docker image "midair-input"
-  - web      : FastAPI + uvicorn の検索 Web アプリ (port 8000)
+  - web      : FastAPI + uvicorn の検索 Web アプリ (ホスト 8762 -> コンテナ 8000)
   - prepare  : OpenMoji 取得 + FAISS index 構築 (初回のみ、profile=setup)
   data/      : ホストの ./data を /app/data にマウント (画像・index を永続化)
 ```
@@ -85,7 +85,7 @@ docker compose up web          # フォアグラウンド
 docker compose up -d web       # バックグラウンド
 ```
 
-ブラウザで **http://localhost:8000** を開く。テキスト入力 / 手書きキャンバスで検索できる。
+ブラウザで **http://localhost:8762** を開く。テキスト入力 / 手書きキャンバスで検索できる。
 
 停止:
 ```bash
@@ -117,10 +117,11 @@ docker compose run --rm web midair --mode emoji --query "fire" --top-k 5
 ソースをマウントすれば、イメージを再ビルドせずに変更を反映できる（`--reload` でホットリロード）:
 
 ```bash
-docker compose run --rm -p 8000:8000 \
+docker compose run --rm -p 8762:8000 \
   -v "$(pwd)/packages:/app/packages" \
   web uvicorn midair_web.app:app --host 0.0.0.0 --port 8000 --reload
 ```
+（`-p 8762:8000` の左がホスト側ポート。コンテナ内 uvicorn は 8000 のまま。）
 
 - Python コードの編集 → 自動リロード。
 - **依存を変えたとき**（`pyproject.toml` のパッケージ追加など）は lock 更新 + 再ビルドが必要:
@@ -134,7 +135,7 @@ docker compose run --rm -p 8000:8000 \
 
 | 症状 | 対処 |
 |------|------|
-| `address already in use` (8000) | 他プロセスが 8000 を使用。`ports: "8080:8000"` に変更 |
+| `address already in use` (8762) | 他プロセスがホスト 8762 を使用。`docker-compose.yml` の `ports` の左を別番号 (例 `"9000:8000"`) に変更 |
 | 検索が `index が見つかりません` | 手順 2 (prepare) を未実行。`docker compose --profile setup run --rm prepare` |
 | Apple Silicon で遅い | amd64 エミュレーションのため。Intel Mac ならネイティブで高速 |
 | イメージを作り直したい | `docker compose build --no-cache` |

@@ -21,8 +21,9 @@ GET  /emoji-img/{hex}.png -> 絵文字画像
 ## 起動
 事前に `data/emoji_search/` の index 構築が必要 (ルート README 参照)。
 ```bash
-uv run midair-web --port 8000          # http://127.0.0.1:8000
-uv run midair-web --port 8000 --reload # 開発用オートリロード
+uv run midair-web                      # http://127.0.0.1:8762 (既定ポート 8762)
+uv run midair-web --reload             # 開発用オートリロード
+uv run midair-web --port 9000          # ポートを変えたいとき
 ```
 
 ## 今後

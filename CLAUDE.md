@@ -19,7 +19,7 @@
 | `japanese-search` | `japanese_search` | 日本語入力 (スケルトン) |
 | `english-search` | `english_search` | 英語入力 (スケルトン) |
 | `midair-app` | `midair_app` | 統合アプリ。`mode` で各 Searcher を遅延ロードして振り分け。`midair` CLI |
-| `midair-web` | `midair_web` | 検索 Web アプリ (FastAPI)。テキスト/手書き入力、非同期ジョブ、画像で結果表示。port 8000 |
+| `midair-web` | `midair_web` | 検索 Web アプリ (FastAPI)。テキスト/手書き入力、非同期ジョブ、画像で結果表示。ホスト port 8762 (コンテナ内 8000) |
 
 ### 統合の継ぎ目 (重要)
 

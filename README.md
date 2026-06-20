@@ -82,7 +82,7 @@ uv run midair --mode english  --query "..."   # 未実装 (スケルトン)
 ## 使い方 (Web アプリ)
 
 ```bash
-uv run midair-web --port 8000     # http://127.0.0.1:8000
+uv run midair-web                 # http://127.0.0.1:8762 (既定ポート 8762)
 ```
 
 テキスト入力と手書きキャンバスの 2 入力に対応。結果は絵文字画像のグリッドで表示し、
@@ -95,7 +95,7 @@ uv run midair-web --port 8000     # http://127.0.0.1:8000
 ```bash
 docker compose build                                # イメージ作成
 docker compose --profile setup run --rm prepare     # 初回: データ取得 + index 構築
-docker compose up web                               # http://localhost:8000
+docker compose up web                               # http://localhost:8762
 ```
 
 詳細は [`docs/emoji_search/DOCKER.md`](docs/emoji_search/DOCKER.md)。
