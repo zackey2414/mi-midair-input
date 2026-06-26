@@ -146,6 +146,12 @@ docker compose down
 uv sync          # 全 workspace パッケージを 1 つの venv に導入
 ```
 
+確認:
+
+```bash
+uv run python -c "import torch, transformers, faiss; print('ok')"
+```
+
 ### B-1. OpenMoji 画像をダウンロード（表示用）
 
 ```bash
@@ -200,6 +206,56 @@ uv run midair --mode english  --query "..."   # 未実装 (スケルトン、exi
 
 ---
 
+## 詰まったときの確認
+
+### `uv run ...` がインストールで止まって見える
+
+どのプロセスが動いているか確認する。
+
+```bash
+ps -ef | grep -E 'uv run|build_index|fetch_mediapipe|download_openmoji'
+```
+
+`build_index.py` の Python プロセスが CPU を使っている場合は、インストールではなく index 構築中。`[2/4]` 以降は CLIP のローカル計算なので待つ。
+
+### Hugging Face の警告が出る
+
+```text
+Warning: You are sending unauthenticated requests to the HF Hub.
+```
+
+未認証アクセスなので遅くなったり制限されやすい、という警告。すぐに失敗を意味しない。index 構築が遅いだけなら、ローカルで構築せず Drive から取得する。
+
+```bash
+uvx gdown --folder "https://drive.google.com/drive/folders/1ucgsVXXp6jOTWapOPTLsz9i-wpnPS652" -O data
+```
+
+モデル取得だけ先に分けて確認する場合:
+
+```bash
+uv run python -c "from transformers import CLIPModel, CLIPProcessor; m='openai/clip-vit-base-patch32'; CLIPModel.from_pretrained(m); CLIPProcessor.from_pretrained(m)"
+```
+
+### `vision_bundle.mjs` のカメラエラーが出る
+
+MediaPipe の静的ファイルが未取得、または取得後にサーバーを再起動していない状態。
+
+```bash
+uv run python packages/web/scripts/fetch_mediapipe.py
+uv run midair-web
+```
+
+その後、ブラウザをハードリロードする。
+
+### 生成物があるかだけ確認したい
+
+```bash
+ls -lh data/emoji_search/index.faiss data/emoji_search/metadata.jsonl data/emoji_search/index_meta.json
+find packages/web/src/midair_web/static/vendor/mediapipe -maxdepth 2 -type f | sort
+```
+
+---
+
 ## ドキュメント
 
 - [`docs/architecture.md`](docs/architecture.md) — 全体構成 / 各 packages のスコープと境界 / 統合の継ぎ目
@@ -211,4 +267,3 @@ uv run midair --mode english  --query "..."   # 未実装 (スケルトン、exi
 ## ライセンス
 
 OpenMoji の絵文字データは **CC BY-SA 4.0**（再配布時は表記が必要）。
-</content>
