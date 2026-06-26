@@ -40,7 +40,7 @@ uvx gdown --folder "https://drive.google.com/drive/folders/1ucgsVXXp6jOTWapOPTLs
 #  -> data/emoji_search/{index.faiss, metadata.jsonl, index_meta.json}
 ```
 
-Drive を使わずローカル構築する場合 (V4=線画版):
+Drive を使わずローカル構築する場合 (線画版):
 ```bash
 uv run python packages/emoji-search/scripts/download_openmoji.py --variant both   # color + black
 uv run python packages/emoji-search/scripts/build_index.py --source-variant black

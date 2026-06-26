@@ -15,7 +15,7 @@ services:
       - ./data:/app/data          # 画像 + index をホストと共有 (永続)
     restart: unless-stopped
 
-  # 基本: 表示用カラー画像を公式から + V4(線画) index を Drive から取得 (各環境で CLIP 推論しない)。
+  # 基本: 表示用カラー画像を公式から + index を Drive から取得 (各環境で CLIP 推論しない)。
   #   docker compose --profile setup run --rm fetch
   #   別フォルダにしたいときは MIDAIR_INDEX_URL を環境変数で上書き。
   fetch:
@@ -30,7 +30,7 @@ services:
       sh -lc "python packages/emoji-search/scripts/download_openmoji.py &&
               gdown --folder '${MIDAIR_INDEX_URL:-https://drive.google.com/drive/folders/1ucgsVXXp6jOTWapOPTLsz9i-wpnPS652}' -O data"
 
-  # 代替: Drive を使わず、コンテナ内の CLIP 推論で V4(線画) index を構築 (重い)。
+  # 代替: Drive を使わず、コンテナ内の CLIP 推論で index を構築 (重い)。
   #   docker compose --profile setup run --rm prepare
   prepare:
     image: midair-input:latest

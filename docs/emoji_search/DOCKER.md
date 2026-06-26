@@ -7,8 +7,8 @@ torch は **CPU 版** を `uv.lock` で固定し、CLIP モデルはイメージ
 ```
 構成: Docker image "midair-input"
   - web      : FastAPI + uvicorn の検索 Web アプリ (ホスト 8762 -> コンテナ 8000)
-  - fetch    : 画像(公式) + V4 index(Drive/gdown) を取得 (基本、profile=setup)
-  - prepare  : ローカル CLIP 推論で V4 index を構築 (代替、profile=setup)
+  - fetch    : 画像(公式) + index(Drive/gdown) を取得 (基本、profile=setup)
+  - prepare  : ローカル CLIP 推論で index を構築 (代替、profile=setup)
   data/      : ホストの ./data を /app/data にマウント (画像・index を永続化)
   ※ CLIP / MediaPipe モデルはイメージに焼き込み済み (カメラ準備不要・実行時オフライン)
 ```
@@ -34,11 +34,11 @@ docker compose build
 index を得る方法は 2 つ。**基本は Drive から取得（各環境で CLIP 推論しない）**:
 
 ```bash
-# (基本) 表示用カラー画像を公式から + V4(線画) index を Drive から取得
+# (基本) 表示用カラー画像を公式から + index を Drive から取得
 docker compose --profile setup run --rm fetch
 ```
 
-Drive を使わずローカルで作る場合（コンテナ内の CLIP 推論で V4=線画 index を構築。重い）:
+Drive を使わずローカルで作る場合（コンテナ内の CLIP 推論で線画ソースから index を構築。重い）:
 
 ```bash
 # (代替) OpenMoji color+black を取得 + 黒線画から index 構築
@@ -48,7 +48,7 @@ docker compose --profile setup run --rm prepare
 - 生成物: `./data/emoji_search/{openmoji/, openmoji.json, index.faiss, metadata.jsonl, index_meta.json}`
 - `fetch` は推論なしで軽い。`prepare` は CPU で数分（Apple Silicon のエミュレーションなら更に）。
 - 一度実行すればホストの `./data` に残るので、次回以降は不要。
-- index はデバイス非依存。**Drive 取得版・ローカル構築版とも V4（`openmoji_black` 線画）** で揃う。
+- index はデバイス非依存。**Drive 取得版・ローカル構築版とも同じ（`openmoji_black` 線画）** で揃う。
 - 取得元 Drive フォルダを変える場合は `MIDAIR_INDEX_URL` を環境変数で指定（`fetch` が参照）。
 
 ### Drive の index を使う（各環境でビルドしない・推奨ルール）
