@@ -132,7 +132,7 @@ docker compose down
 
 ### A-4. アプリの使い方
 
-- **ブラウザ** で表示された URL（既定 http://localhost:8762）を開く。テキスト入力 / 手書きキャンバス / カメラの Mid-Air 入力で検索でき、結果は絵文字画像のグリッドで表示される（検索は非同期ジョブ）。
+- **ブラウザ** で表示された URL（既定 http://localhost:8762 ）を開く。テキスト入力 / 手書きキャンバス / カメラの Mid-Air 入力で検索でき、結果は絵文字画像のグリッドで表示される（検索は非同期ジョブ）。
 - **CLI をワンショットで使う**:
   ```bash
   docker compose run --rm web midair --mode emoji --query "cat" --top-k 5
