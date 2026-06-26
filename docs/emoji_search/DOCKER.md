@@ -28,19 +28,26 @@ docker compose build
 ## 2. データを用意する（初回のみ・既存 data があればスキップ可）
 
 > **すでに `./data/emoji_search/` に画像 + index がある場合（別マシンからコピーした場合も含む）は、この手順は不要。** そのまま手順 3 へ。
-> faiss index は**デバイス非依存・移植可能**で、GPU で構築した index も CPU でそのまま使える
-> （CLIP の重みが同じなら GPU/CPU で同じ埋め込み空間。差は無視できる浮動小数誤差のみ）。
-> Web 表示には絵文字画像（`openmoji/`、約18MB）も要る点に注意。**推奨フローは「画像は公式から取得 ＋ index は Drive から取得」**（下記「Drive の index を使う」）。
 
-データが無い新規環境では、OpenMoji 画像の取得と FAISS index 構築をコンテナ内で実行し、結果を `./data` に書き出す。
+index を得る方法は 2 つ。**基本は Drive から取得（各環境で CLIP 推論しない）**:
 
 ```bash
+# (基本) 表示用カラー画像を公式から + V4(線画) index を Drive から取得
+docker compose --profile setup run --rm fetch
+```
+
+Drive を使わずローカルで作る場合（コンテナ内の CLIP 推論で V4=線画 index を構築。重い）:
+
+```bash
+# (代替) OpenMoji color+black を取得 + 黒線画から index 構築
 docker compose --profile setup run --rm prepare
 ```
 
 - 生成物: `./data/emoji_search/{openmoji/, openmoji.json, index.faiss, metadata.jsonl, index_meta.json}`
-- index 構築は CPU で 1〜数分（絵文字 約4500枚）。
+- `fetch` は推論なしで軽い。`prepare` は CPU で数分（Apple Silicon のエミュレーションなら更に）。
 - 一度実行すればホストの `./data` に残るので、次回以降は不要。
+- index はデバイス非依存。**Drive 取得版・ローカル構築版とも V4（`openmoji_black` 線画）** で揃う。
+- 取得元 Drive フォルダを変える場合は `MIDAIR_INDEX_URL` を環境変数で指定（`fetch` が参照）。
 
 ### Drive の index を使う（各環境でビルドしない・推奨ルール）
 

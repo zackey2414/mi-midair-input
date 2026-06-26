@@ -97,7 +97,8 @@ uv run midair-web                 # http://127.0.0.1:8762 (既定ポート 8762)
 
 ```bash
 docker compose build                                # イメージ作成
-docker compose --profile setup run --rm prepare     # 初回: データ取得 + index 構築
+docker compose --profile setup run --rm fetch       # 基本: 画像(公式) + V4 index(Drive) を取得
+# 代替(Drive を使わずローカル構築): docker compose --profile setup run --rm prepare
 docker compose up web                               # http://localhost:8762
 ```
 
