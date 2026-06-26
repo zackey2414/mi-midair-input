@@ -27,7 +27,7 @@ services:
     volumes:
       - ./data:/app/data
     command: >
-      sh -lc "python packages/emoji-search/scripts/download_openmoji.py &&
+      sh -c "python packages/emoji-search/scripts/download_openmoji.py &&
               gdown --folder '${MIDAIR_INDEX_URL:-https://drive.google.com/drive/folders/1ucgsVXXp6jOTWapOPTLsz9i-wpnPS652}' -O data"
 
   # 代替: Drive を使わず、コンテナ内の CLIP 推論で index を構築 (重い)。
@@ -41,5 +41,5 @@ services:
     volumes:
       - ./data:/app/data
     command: >
-      sh -lc "python packages/emoji-search/scripts/download_openmoji.py --variant both &&
+      sh -c "python packages/emoji-search/scripts/download_openmoji.py --variant both &&
               python packages/emoji-search/scripts/build_index.py --source-variant black"
