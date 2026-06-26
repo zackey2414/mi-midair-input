@@ -34,6 +34,9 @@ RUN python -c "from transformers import CLIPModel, CLIPProcessor; m='openai/clip
 #     -> ブラウザの Mid-Air 入力 (手検出) も実行時ネット不要 (完全オフライン)
 RUN python packages/web/scripts/fetch_mediapipe.py
 
+# 3c) Drive から index を取得する gdown を venv に入れておく (compose の fetch サービスが使う)
+RUN uv pip install --python /app/.venv/bin/python gdown
+
 # モデルを焼き込んだので実行時はオフライン固定 (ネット無し環境でも確実に動く)
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
