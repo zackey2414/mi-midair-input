@@ -1,0 +1,21 @@
+flowchart LR
+  A(["カメラ開始"]) --> B{"手を検出?"}
+  B -->|はい| M{"入力モード<br/>（手の回転で切替）"}
+
+  M -->|日本語| JP["日本語入力"]
+  M -->|英語| EN["英語入力"]
+  M -->|絵文字| EM["絵文字入力"]
+
+  JP --> OUT(["入力結果"])
+  EN --> OUT
+  EM --> OUT
+
+  SW["🔁 言語切替モーション<br/>手を裏返して 日本語 → 英語 → 絵文字"] -.-> M
+  EX["いつでも: 入力テスト / UI 日英切替 / 運指・しきい設定"] -.-> M
+
+  classDef mode fill:#e8f0fe,stroke:#4a6fd0,color:#111;
+  classDef out fill:#fff3d6,stroke:#c79a2b,color:#111;
+  classDef feat fill:#eef3ea,stroke:#6a8f4a,color:#111;
+  class JP,EN,EM mode;
+  class OUT out;
+  class SW,EX feat;

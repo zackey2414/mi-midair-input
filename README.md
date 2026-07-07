@@ -274,6 +274,10 @@ uv run midair-doctor
 ## ドキュメント
 
 - [`docs/fold_input_demo.md`](docs/fold_input_demo.md) — **`demo-app` ブランチのデモ内容**（折り曲げ式 日本語/英語入力・言語切替・入力テスト・UI 日英切替・調整項目）
+- [`docs/diagrams/implementation.md`](docs/diagrams/implementation.md) — 実装アーキテクチャ図（日本語/英語/絵文字のモード別フロー）｜ [English](docs/diagrams/implementation.en.md)
+- [`docs/diagrams/application.md`](docs/diagrams/application.md) — アプリケーション・フロー図（操作の流れ・入力経路）｜ [English](docs/diagrams/application.en.md)
+  - 各図は白背景 PNG（スライド向け）と Mermaid ソース(`.mmd`)を同梱。実装図は 日/英/絵文字 の3モードに分割
+  - 作成・再生成方法は [`docs/diagrams/README.md`](docs/diagrams/README.md)（Mermaid + `render.sh`）
 - [`docs/japanese_input.md`](docs/japanese_input.md) — 日本語入力 (折り曲げ式) の運指・パラメータ・内部仕様
 - [`docs/architecture.md`](docs/architecture.md) — 全体構成 / 各 packages のスコープと境界 / 統合の継ぎ目
 - [`docs/emoji_search/DOCKER.md`](docs/emoji_search/DOCKER.md) — Docker でのローカル実行 (Mac / CPU)

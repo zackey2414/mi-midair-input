@@ -6,6 +6,8 @@
 > ⚠️ デモ版です。運指・しきい値は画面から可変にしてあり、値はページ再読込でリセットされます（言語⇄英語トグルの選択のみ `localStorage` に保存）。安定版ではありません。
 >
 > 日本語入力の運指・パラメータ・内部仕様の詳細は [`japanese_input.md`](japanese_input.md) を参照。ここでは全体像と、英語入力・絵文字・言語切替・テスト・i18n を扱う。
+>
+> 構成図（白背景 PNG・スライド向け + Mermaid ソース）: [実装アーキテクチャ図（日/英/絵文字のモード別）](diagrams/implementation.md) / [アプリケーション・フロー図](diagrams/application.md)（English: [implementation](diagrams/implementation.en.md) / [application](diagrams/application.en.md)）。
 
 ---
 

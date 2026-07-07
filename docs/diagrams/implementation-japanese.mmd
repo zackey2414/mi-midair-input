@@ -1,0 +1,14 @@
+flowchart LR
+  cam(["Web カメラ"]) -->|映像| mp["MediaPipe<br/>手ランドマーク"]
+  mp -->|ランドマーク| core["core.js<br/>モード振り分け"]
+  core -->|onFrame| jp["modes/japanese.js"]
+  jp --> fold["foldcore.js<br/>折り曲げ式入力エンジン<br/>（英語と共有）"]
+  fold -->|かな| html["index.html<br/>入力結果"]
+  config["config.js<br/>しきい値・ランドマーク"] -.-> core
+  i18n["i18n.js<br/>日英辞書 t()"] -.-> jp
+  finger["fingereditor.js<br/>運指設定"] -.->|foldMap| fold
+
+  classDef front fill:#e8f0fe,stroke:#4a6fd0,color:#111;
+  classDef ext fill:#eef3ea,stroke:#6a8f4a,color:#111;
+  class core,jp,fold,html,config,i18n,finger front;
+  class cam,mp ext;

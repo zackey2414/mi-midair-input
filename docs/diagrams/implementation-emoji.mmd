@@ -1,0 +1,21 @@
+flowchart LR
+  cam(["Web カメラ"]) -->|映像| mp["MediaPipe<br/>手ランドマーク"]
+  mp -->|ランドマーク| core["core.js<br/>モード振り分け"]
+  core -->|onFrame| emoji["modes/emoji.js<br/>描く / 検索 / クリア / 削除"]
+
+  subgraph Back["backend（絵文字検索のみ）"]
+    direction TB
+    api["FastAPI<br/>非同期ジョブ"] --> es["emoji-search<br/>CLIP ViT-B/32 + FAISS"]
+  end
+
+  emoji -->|手書き / テキスト検索| api
+  api -->|候補| emoji
+  emoji -->|選択 / top-1| html["index.html<br/>入力結果"]
+  config["config.js<br/>しきい値・ランドマーク"] -.-> core
+
+  classDef front fill:#e8f0fe,stroke:#4a6fd0,color:#111;
+  classDef back fill:#fde8ec,stroke:#d05070,color:#111;
+  classDef ext fill:#eef3ea,stroke:#6a8f4a,color:#111;
+  class core,emoji,html,config front;
+  class api,es back;
+  class cam,mp ext;

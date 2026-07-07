@@ -1,0 +1,21 @@
+flowchart LR
+  A(["Start camera"]) --> B{"Hand detected?"}
+  B -->|Yes| M{"Input mode<br/>(switch by hand rotation)"}
+
+  M -->|Japanese| JP["Japanese input"]
+  M -->|English| EN["English input"]
+  M -->|Emoji| EM["Emoji input"]
+
+  JP --> OUT(["Input result"])
+  EN --> OUT
+  EM --> OUT
+
+  SW["🔁 Language-switch motion<br/>flip hand: Japanese to English to Emoji"] -.-> M
+  EX["Anytime: input test / UI JA-EN toggle / fingering & threshold settings"] -.-> M
+
+  classDef mode fill:#e8f0fe,stroke:#4a6fd0,color:#111;
+  classDef out fill:#fff3d6,stroke:#c79a2b,color:#111;
+  classDef feat fill:#eef3ea,stroke:#6a8f4a,color:#111;
+  class JP,EN,EM mode;
+  class OUT out;
+  class SW,EX feat;

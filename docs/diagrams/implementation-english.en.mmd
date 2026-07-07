@@ -1,0 +1,14 @@
+flowchart LR
+  cam(["Webcam"]) -->|video| mp["MediaPipe<br/>hand landmarks"]
+  mp -->|landmarks| core["core.js<br/>mode dispatch"]
+  core -->|onFrame| en["modes/english.js"]
+  en --> fold["foldcore.js<br/>fold-input engine<br/>(shared with Japanese)"]
+  fold -->|letters| html["index.html<br/>input result"]
+  config["config.js<br/>thresholds / landmarks"] -.-> core
+  i18n["i18n.js<br/>JA/EN dictionary t()"] -.-> en
+  finger["fingereditor.js<br/>fingering settings"] -.->|foldMap| fold
+
+  classDef front fill:#e8f0fe,stroke:#4a6fd0,color:#111;
+  classDef ext fill:#eef3ea,stroke:#6a8f4a,color:#111;
+  class core,en,fold,html,config,i18n,finger front;
+  class cam,mp ext;
