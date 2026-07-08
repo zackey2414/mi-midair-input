@@ -121,6 +121,39 @@
   .test-result.ng { color:#ff5b5b; }
   .test-stats { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:13px; color:var(--muted); }
   .test-stats b { color:var(--fg); font-size:15px; font-variant-numeric:tabular-nums; }
+  /* --- 精度評価モード --- */
+  #evalPanel select { padding:8px 10px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel); color:var(--fg); font-size:14px; }
+  .eval-target { margin-top:14px; text-align:center; }
+  .eval-target img { width:88px; height:88px; }
+  .eval-progress { color:var(--accent); font-size:13px; font-weight:600; margin-bottom:6px; }
+  .eval-target-label { font-size:13px; margin-top:6px; }
+  .eval-log { margin-top:28px; }
+  .eval-summary h2 { font-size:15px; color:var(--fg); margin:0 0 12px; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 16px; min-width:96px; text-align:center; }
+  .stat .v { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .stat .k { font-size:11px; color:var(--muted); margin-top:4px; }
+  .eval-table { width:100%; border-collapse:collapse; margin-top:16px; font-size:12px; }
+  .eval-table th, .eval-table td { border-bottom:1px solid var(--line); padding:8px;
+    text-align:left; vertical-align:middle; }
+  .eval-table th { color:var(--muted); font-weight:600; }
+  .eval-table td.tgt { text-align:center; }
+  .eval-table td.tgt img { width:44px; height:44px; }
+  .eval-table td.tgt div { font-size:11px; color:var(--muted); margin-top:4px; }
+  .eval-table img.draw { width:56px; height:42px; background:#fff; border-radius:6px;
+    border:1px solid var(--line); object-fit:contain; }
+  .eval-table td.resrow { line-height:0; max-width:380px; }
+  .eval-table img.res { width:32px; height:32px; margin:2px; border:2px solid transparent;
+    border-radius:4px; }
+  .eval-table img.res.hit { border-color:#5bff8c; }
+  .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px;
+    font-weight:700; white-space:nowrap; }
+  .badge.b1 { background:#0f5132; color:#8fffbf; }
+  .badge.b5 { background:#173a6b; color:#9fc0ff; }
+  .badge.b10 { background:#5b4a12; color:#ffd98f; }
+  .badge.bmiss { background:#3a2020; color:#ff9a9a; }
 </style>
 </head>
 <body>
@@ -188,6 +221,36 @@
         <button class="primary" onclick="searchText()" data-i18n="btn.search">検索</button>
       </div>
     </div>
+
+    <div class="panel" id="evalPanel" style="display:none">
+      <h2>精度評価</h2>
+      <div id="evalTargetBox" class="eval-target" style="display:none">
+        <div class="eval-progress" id="evalProgress"></div>
+        <img id="evalTargetImg" alt="お題" />
+        <div class="eval-target-label" id="evalTargetLabel"></div>
+        <div class="row" style="justify-content:center">
+          <button class="primary" onclick="window.__evalSubmit()">この絵で確定</button>
+          <button onclick="clearPad()">クリア</button>
+        </div>
+        <p class="hint">お題をカメラ窓に描いて「この絵で確定」または ✌️ で記録。マウス描きでも可。自動で次のお題へ進みます。</p>
+      </div>
+      <div class="row">
+        <label class="k">試行数</label>
+        <input id="evalN" type="text" value="10" style="width:52px" />
+        <label class="k">ジャンル</label>
+        <select id="evalGroup">
+          <option value="faces" selected>顔だけ</option>
+          <option value="smileys-emotion">顔・感情</option>
+          <option value="people-body">人物・身体</option>
+          <option value="symbols">記号</option>
+          <option value="all">全ジャンル</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="primary" id="evalStartBtn" onclick="startEval()">評価開始</button>
+        <button id="evalStopBtn" onclick="stopEval()" style="display:none">中止</button>
+      </div>
+    </div>
   </section>
 
   <section class="results-wrap">
@@ -198,6 +261,9 @@
         <button id="modeJapanese" onclick="setInputMode('japanese')" data-i18n="mode.japanese">日本語</button>
         <button id="modeEnglish" onclick="setInputMode('english')" data-i18n="mode.english">英語</button>
         <button id="modeEmoji" class="active" onclick="setInputMode('emoji')" data-i18n="mode.emoji">絵文字</button>
+      </div>
+      <div class="row" id="evalModeRow">
+        <button id="evalModeBtn" style="display:none;flex:1" onclick="toggleEvalMode()">絵文字入力評価</button>
       </div>
       <div id="jpFlickStatus" class="jp-proto-status">絵文字: テキスト / 手書きで検索し、下の候補をクリックで入力。カメラは 3本ピンチで描く / ピースで検索 / 指差しでクリア。</div>
       <div id="jpFingerConfig" class="jp-cfg" style="display:none"></div>
@@ -225,6 +291,7 @@
       </div>
     </div>
     <div id="grid" class="grid"></div>
+    <div id="evalLog" class="eval-log"></div>
     <div id="inputTestPanel" class="test-panel" style="display:none">
       <h2 data-i18n="panel.test">入力テスト</h2>
       <div class="test-row"><span data-i18n="label.prompt">お題:</span> <b id="testTarget"></b> <span id="testProgress" class="test-prog"></span></div>

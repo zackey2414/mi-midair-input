@@ -64,7 +64,12 @@ export default {
           armed = false; lastFire = now; held = null; charge = 0;
           if (mode === "clear") { clearPad(); setFlash(t("emoji.fClear"), now + 500); fired = "clear"; }
           else if (mode === "delete") { const o = $("jpFlickOutput"); if (o) o.value = o.value.slice(0, -1); setFlash(t("emoji.fDelete"), now + 500); fired = "delete"; }
-          else { searchImage("camera"); setFlash(t("emoji.fSubmit"), now + 500); fired = "submit"; }
+          else {
+            // 評価モード中は「お題の確定+記録」へ、通常時は絵文字検索へ振り分ける
+            if (window.__evalActive) window.__evalSubmit();
+            else searchImage("camera");
+            setFlash(t("emoji.fSubmit"), now + 500); fired = "submit";
+          }
         }
       }
     } else {

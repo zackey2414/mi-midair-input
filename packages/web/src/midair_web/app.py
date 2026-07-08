@@ -14,6 +14,7 @@ import base64
 import io
 import mimetypes
 import os
+import random
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -134,6 +135,49 @@ async def search_image(query: ImageQuery) -> dict:
     job_id = _new_job()
     asyncio.create_task(_process(job_id, lambda s: s.search_image(image, query.top_k)))
     return {"job_id": job_id, "status": "pending"}
+
+
+@app.get("/api/eval/targets")
+async def eval_targets(n: int = 10, group: str = "smileys-emotion") -> dict:
+    """精度評価用の「お題」絵文字をランダムに返す。
+
+    index に入っている絵文字だけから選ぶので、お題は必ず検索対象に存在する
+    (存在しない絵文字をお題にすると原理的に当たらず、評価が無意味になるため)。
+    group="all" (または空文字) で全ジャンル、group="faces" で人の顔だけ、
+    それ以外は該当 group から抽出する。
+    """
+    searcher = await get_searcher()
+    if group in ("", "all"):
+        pool = searcher.metadata
+    elif group == "faces":
+        # 人の顔だけ: smileys-emotion の face* サブグループから、
+        # costume (💩🤡👹👺👻👽👾🤖) と 悪魔/どくろ (😈👿💀☠️) を除く。
+        # cat-face/monkey-face は "face" 始まりでないので自動的に除外される。
+        pool = [
+            m for m in searcher.metadata
+            if m.get("group") == "smileys-emotion"
+            and m.get("subgroups", "").startswith("face")
+            and m.get("subgroups") != "face-costume"
+            and m.get("hexcode") not in ("1F608", "1F47F", "1F480", "2620")
+        ]
+    else:
+        pool = [m for m in searcher.metadata if m.get("group") == group]
+    if not pool:
+        raise HTTPException(status_code=404, detail=f"no targets for group={group!r}")
+    chosen = random.sample(pool, min(n, len(pool)))
+    return {
+        "group": group,
+        "targets": [
+            {
+                "hexcode": m["hexcode"],
+                "emoji": m.get("emoji", ""),
+                "label": m.get("annotation", ""),
+                "group": m.get("group", ""),
+                "image_url": f"/emoji-img/{m['hexcode']}.png",
+            }
+            for m in chosen
+        ],
+    }
 
 
 @app.get("/api/jobs/{job_id}")
