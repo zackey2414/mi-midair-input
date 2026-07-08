@@ -49,14 +49,15 @@ export function applyEmojiLayout(isEmoji) {
   }
 }
 
-// 「絵文字入力評価」ボタン: 評価サブモードのオン/オフ。入るときは即お題を出す
-// (検索UIを隠すのでスクロール無しでお題が見える)。抜けるときは評価セッションも止める。
+// 「絵文字入力評価」ボタン: 評価サブモードのオン/オフ。入るときは設定パネル(試行数/ジャンル/
+// モデル/制限)を開いた状態で待機し、お題取得・計測は「評価開始」ボタン(startEval)で始める。
+// 抜けるときは評価セッションも止める。
 export function toggleEvalMode() {
   evalMode = !evalMode;
   setLangSwitchEnabled(!evalMode);              // 評価中は手首フリックの言語切替を無効化、抜けたら復帰
   applyEmojiLayout(true);                       // このボタンは絵文字モード中のみ表示
-  if (evalMode) startEval();
-  else setActive(false);
+  setActive(false);                             // 設定を表示して待機(入る)/セッション停止(抜ける)。開始は startEval()
+  if (evalMode) setStatus("設定を選び「評価開始」を押してください");
 }
 
 export async function startEval() {
