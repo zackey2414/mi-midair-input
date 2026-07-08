@@ -3,12 +3,15 @@
 //   ヒット率と MRR を集計する。お題は /api/eval/targets (index に在る絵文字のみ) から取得。
 //   ログは localStorage に貯め、右カラム下 (#evalLog) に描画する (ファイルは作らない)。
 //   ✌️ 検索ジェスチャからも確定できるよう window.__evalActive / __evalSubmit を公開する。
-import { $, clearPad, getPadCtx, searchImageRaw, setStatus, setLangSwitchEnabled } from "./core.js";
+import { $, clearPad, getPadCtx, searchImageRaw, setStatus, setLangSwitchEnabled, setSearchModel } from "./core.js";
 
 const EVAL_LOG_KEY = "emojiEvalLog";
 const EVAL_TOPK = 10;
 let state = { active: false, targets: [], idx: 0 };
 let evalMode = false;   // 絵文字モード内で「評価サブモード」に入っているか
+let shownAt = 0;                            // お題表示時刻 (入力完了までの時間の計測用)
+let models = [];                            // /api/models の一覧
+let modelInfo = { key: null, label: "?" };  // 現在選択中の検索モデル
 
 const loadLog = () => { try { return JSON.parse(localStorage.getItem(EVAL_LOG_KEY)) || []; } catch { return []; } };
 const saveLog = (log) => localStorage.setItem(EVAL_LOG_KEY, JSON.stringify(log.slice(-200)));  // 肥大防止
@@ -77,6 +80,7 @@ function showTarget() {
   const img = $("evalTargetImg"); if (img) img.src = tg.image_url;
   const lab = $("evalTargetLabel"); if (lab) lab.textContent = `${tg.emoji} ${tg.label}`;
   setStatus(`お題「${tg.label}」を描いてください`);
+  shownAt = performance.now();   // ここから確定までを「入力にかかった時間」とする
 }
 
 function padBlank() {
@@ -99,9 +103,10 @@ function padThumb(w = 160) {
 export async function evalSubmit() {
   if (!state.active) return;
   if (padBlank()) { setStatus("先にお題を描いてください"); return; }
+  const drawMs = performance.now() - shownAt;   // お題表示→確定 = 入力にかかった時間
   setStatus("検索中…");
-  let results;
-  try { results = await searchImageRaw(EVAL_TOPK); }
+  let results, searchMs;
+  try { ({ results, searchMs } = await searchImageRaw(EVAL_TOPK)); }
   catch (e) { setStatus("検索エラー: " + e); return; }
   const tg = state.targets[state.idx];
   let rank = null;
@@ -109,6 +114,7 @@ export async function evalSubmit() {
   const log = loadLog();
   log.push({
     ts: Date.now(), target: tg, drawing: padThumb(), rank,
+    model: modelInfo, drawMs, searchMs,
     results: results.slice(0, EVAL_TOPK).map((r) => ({
       id: r.id, emoji: r.emoji, label: r.label, score: r.score, image_url: r.image_url,
     })),
@@ -133,49 +139,100 @@ function rankBadge(rank) {
   return `<span class="badge bmiss">圏外</span>`;
 }
 
+function aggregate(ts) {
+  const n = ts.length;
+  const c1 = ts.filter((t) => t.rank === 1).length;
+  const c5 = ts.filter((t) => t.rank && t.rank <= 5).length;
+  const c10 = ts.filter((t) => t.rank && t.rank <= 10).length;
+  const mrr = ts.reduce((s, t) => s + (t.rank ? 1 / t.rank : 0), 0) / n;
+  const avgDraw = ts.reduce((s, t) => s + (t.drawMs || 0), 0) / n;
+  const avgSearch = ts.reduce((s, t) => s + (t.searchMs || 0), 0) / n;
+  return { n, c1, c5, c10, mrr, avgDraw, avgSearch };
+}
+
 export function renderEvalLog() {
   const box = $("evalLog"); if (!box) return;
   const log = loadLog();
   if (!log.length) { box.innerHTML = ""; return; }
-  const n = log.length;
-  const c1 = log.filter((t) => t.rank === 1).length;
-  const c5 = log.filter((t) => t.rank && t.rank <= 5).length;
-  const c10 = log.filter((t) => t.rank && t.rank <= 10).length;
-  const mrr = log.reduce((s, t) => s + (t.rank ? 1 / t.rank : 0), 0) / n;
-  const pct = (x) => `${(100 * x / n).toFixed(1)}%`;
-  let html = `
-    <div class="eval-summary">
-      <h2>評価ログ集計 <button onclick="evalClearLog()" style="float:right">ログ消去</button></h2>
-      <div class="stats">
-        <div class="stat"><div class="v">${n}</div><div class="k">試行数</div></div>
-        <div class="stat"><div class="v">${pct(c1)}</div><div class="k">Top-1 (${c1}/${n})</div></div>
-        <div class="stat"><div class="v">${pct(c5)}</div><div class="k">Top-5 (${c5}/${n})</div></div>
-        <div class="stat"><div class="v">${pct(c10)}</div><div class="k">Top-10 (${c10}/${n})</div></div>
-        <div class="stat"><div class="v">${mrr.toFixed(3)}</div><div class="k">MRR</div></div>
-      </div>
-    </div>
-    <table class="eval-table">
-      <thead><tr><th>お題</th><th>描画</th><th>結果</th><th>top-10 (左=1位 / 緑枠=お題)</th></tr></thead>
-      <tbody>`;
+
+  // --- モデル別集計 (モデルサイズ比較) ---
+  const byModel = new Map();
+  for (const t of log) {
+    const label = (t.model && t.model.label) || "?";
+    if (!byModel.has(label)) byModel.set(label, []);
+    byModel.get(label).push(t);
+  }
+  const p = (x, n) => `${(100 * x / n).toFixed(0)}%`;
+  let cmp = `<table class="eval-table"><thead><tr>
+      <th>モデル</th><th>試行</th><th>Top-1</th><th>Top-5</th><th>Top-10</th><th>MRR</th>
+      <th>平均入力</th><th>平均検索</th></tr></thead><tbody>`;
+  for (const [label, ts] of byModel) {
+    const s = aggregate(ts);
+    cmp += `<tr><td><b>${label}</b></td><td>${s.n}</td>
+      <td>${p(s.c1, s.n)}</td><td>${p(s.c5, s.n)}</td><td>${p(s.c10, s.n)}</td>
+      <td>${s.mrr.toFixed(3)}</td>
+      <td>${(s.avgDraw / 1000).toFixed(1)}s</td><td>${Math.round(s.avgSearch)}ms</td></tr>`;
+  }
+  cmp += `</tbody></table>`;
+
+  // --- 各試行の詳細 ---
+  let rows = "";
   for (const t of log.slice().reverse()) {
     const resImgs = t.results.map((r) => {
       const hit = r.id === t.target.hexcode ? " hit" : "";
       return `<img class="res${hit}" src="${r.image_url}" title="${r.label} (${r.score})" loading="lazy" />`;
     }).join("");
-    html += `<tr>
+    const ml = (t.model && t.model.label) || "?";
+    const dsec = t.drawMs != null ? `${(t.drawMs / 1000).toFixed(1)}s` : "-";
+    const sms = t.searchMs != null ? `${Math.round(t.searchMs)}ms` : "-";
+    rows += `<tr>
       <td class="tgt"><img src="${t.target.image_url}" loading="lazy" /><div>${t.target.emoji} ${t.target.label}</div></td>
       <td><img class="draw" src="${t.drawing}" /></td>
-      <td>${rankBadge(t.rank)}</td>
+      <td>${rankBadge(t.rank)}<div class="trial-meta">${ml}<br>入力 ${dsec} / 検索 ${sms}</div></td>
       <td class="resrow">${resImgs}</td>
     </tr>`;
   }
-  html += `</tbody></table>`;
-  box.innerHTML = html;
+
+  box.innerHTML = `
+    <div class="eval-summary">
+      <h2>モデル別 集計 <button onclick="evalClearLog()" style="float:right">ログ消去</button></h2>
+      ${cmp}
+    </div>
+    <table class="eval-table" style="margin-top:20px">
+      <thead><tr><th>お題</th><th>描画</th><th>結果 / モデル・時間</th><th>top-10 (左=1位 / 緑枠=お題)</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
-// 起動時: 既存ログ描画 + ✌️ 用サブミットを公開
+// /api/models からモデル一覧を取ってセレクトに反映し、選択を検索モデルに反映する。
+async function initModelSelect() {
+  const sel = $("evalModel");
+  if (!sel) return;
+  try {
+    const data = await (await fetch("/api/models")).json();
+    models = data.models || [];
+    sel.innerHTML = "";
+    for (const m of models) {
+      const o = document.createElement("option");
+      o.value = m.key;
+      o.textContent = `${m.label} (${m.dim}d)`;
+      sel.appendChild(o);
+    }
+    sel.value = data.default;
+    applyModel(sel.value);
+    sel.onchange = () => applyModel(sel.value);
+  } catch (e) { /* モデル一覧が取れなければ既定モデルのまま検索 */ }
+}
+function applyModel(key) {
+  const m = models.find((x) => x.key === key) || { key, label: key };
+  modelInfo = { key: m.key, label: m.label };
+  setSearchModel(m.key);
+}
+
+// 起動時: モデル一覧の反映 + 既存ログ描画 + ✌️ 用サブミットを公開
 export function initEval() {
   window.__evalActive = false;
   window.__evalSubmit = evalSubmit;
+  initModelSelect();
   renderEvalLog();
 }

@@ -262,29 +262,33 @@ async function runJob(url, body, source = "manual") {
   }
 }
 
+// ページ内で選んだ検索モデル (key)。null=既定。全検索リクエストに載せる。
+let currentModel = null;
+export function setSearchModel(key) { currentModel = key; }
+
 export function searchText() {
   const q = $("q").value.trim();
   if (!q) { setStatus(t("status.needText")); return; }
-  runJob("/api/search/text", { query: q, top_k: effectiveTopK() });
+  runJob("/api/search/text", { query: q, top_k: effectiveTopK(), model: currentModel });
 }
 export function searchImage(source = "manual") {
   const dataUrl = canvas.toDataURL("image/png");
-  runJob("/api/search/image", { image: dataUrl, top_k: effectiveTopK() }, source);
+  runJob("/api/search/image", { image: dataUrl, top_k: effectiveTopK(), model: currentModel }, source);
 }
 
-// 精度評価用: 現在の手書き画像で検索し、上位 topKN 件の結果配列をそのまま返す。
-// runJob と違い top-1 自動入力/グリッド描画はしない (評価側が順位を測れるよう生の結果を渡す)。
+// 精度評価用: 現在の手書き画像で検索し、{results, searchMs(サーバ計測の検索実時間)} を返す。
+// runJob と違い top-1 自動入力/グリッド描画はしない (評価側が順位・速度を測れるよう生で渡す)。
 export async function searchImageRaw(topKN) {
   const dataUrl = canvas.toDataURL("image/png");
   const res = await fetch("/api/search/image", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: dataUrl, top_k: topKN }),
+    body: JSON.stringify({ image: dataUrl, top_k: topKN, model: currentModel }),
   });
   const { job_id } = await res.json();
   while (true) {
     await sleep(300);
     const job = await (await fetch(`/api/jobs/${job_id}`)).json();
-    if (job.status === "done") return job.results;
+    if (job.status === "done") return { results: job.results, searchMs: job.elapsed_ms };
     if (job.status === "error") throw new Error(job.error);
   }
 }

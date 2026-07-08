@@ -10,11 +10,14 @@
 
 ## 非同期処理
 ```
-POST /api/search/text   {query, top_k}      -> {job_id, status:"pending"}
-POST /api/search/image  {image(dataURL), top_k} -> {job_id, status:"pending"}
-GET  /api/jobs/{job_id}  -> {status, results[], error}
+GET  /api/models        -> {models:[{key,label,model_id,dim}], default}
+POST /api/search/text   {query, top_k, model?}      -> {job_id, status:"pending"}
+POST /api/search/image  {image(dataURL), top_k, model?} -> {job_id, status:"pending"}
+GET  /api/jobs/{job_id}  -> {status, results[], error, elapsed_ms}
+GET  /api/eval/targets?n=&group=  -> {targets[]}  (精度評価のお題; group=faces で人の顔のみ)
 GET  /emoji-img/{hex}.png -> 絵文字画像
 ```
+`model` は `/api/models` の key。未指定なら既定モデル。`elapsed_ms` は検索(埋め込み+近傍探索)の実時間。
 重い CLIP 推論は `asyncio.to_thread` でワーカースレッドに逃がし、イベントループを塞がない。
 フロントは `job_id` を受け取り `GET /api/jobs/{id}` を 300ms 間隔でポーリングして結果を描画する。
 
@@ -58,6 +61,55 @@ uv run midair-doctor
 uv run midair-web                      # http://127.0.0.1:8762 (既定ポート 8762)
 uv run midair-web --reload             # 開発用オートリロード
 uv run midair-web --port 9000          # ポートを変えたいとき
+```
+
+## 精度評価 & モデル比較
+
+絵文字モードの **「絵文字入力評価」** ボタンで精度評価モードに入る。お題の絵文字を手描き → 検索し、
+お題が **top-1/5/10** に入った割合と **MRR**、さらに **入力時間**(お題表示→確定) と **検索時間**
+(確定→結果; サーバ側の推論実時間 `elapsed_ms`) を記録して集計する。ログはブラウザの localStorage に貯め、
+画面下に **モデル別の比較表** として描画する (ファイルは作らない)。評価中は手首フリックの言語切替を無効化する。
+
+評価パネルの **「モデル」** で **ViT-B/32 / B/16 / L/14** を切り替えられる。各モデルは自分の index で検索し、
+結果はモデル別に集計されるので、**同一 UI でモデルサイズごとの精度・速度を比較**できる。
+
+### データ配置
+モデルごとに index を分け、**同じ 3 ファイル**を「data ルート/emoji_search/」に置く:
+```
+data/emoji_search/          index.faiss  metadata.jsonl  index_meta.json  openmoji/  openmoji_black/
+data-vitb16/emoji_search/   index.faiss  metadata.jsonl  index_meta.json
+data-vitl14/emoji_search/   index.faiss  metadata.jsonl  index_meta.json
+```
+- 表示用の絵文字画像 (`/emoji-img`) は **既定 (base) の `data/emoji_search/openmoji/` からのみ** 配信するので、
+  変種 (data-vitb16 等) には index の 3 ファイルだけあればよい。
+- FAISS index はデバイス非依存。**別マシンには data* ディレクトリをそのままコピーしてもよい** (下の構築は不要になる)。
+
+### 別デバイスでの用意 (ローカル構築)
+```bash
+uv sync
+# 1) OpenMoji 画像 (表示=color / 構築=black) を取得
+uv run python packages/emoji-search/scripts/download_openmoji.py --variant both
+# 2) 3 モデルぶんの index を構築 (線画 black から埋め込み)。モデルは初回に自動DL (B/16≈0.6GB, L/14≈1.7GB)
+uv run python packages/emoji-search/scripts/build_index.py --source-variant black \
+    --model openai/clip-vit-base-patch32
+uv run python packages/emoji-search/scripts/build_index.py --source-variant black \
+    --model openai/clip-vit-base-patch16 \
+    --index-path data-vitb16/emoji_search/index.faiss --metadata-out data-vitb16/emoji_search/metadata.jsonl
+uv run python packages/emoji-search/scripts/build_index.py --source-variant black \
+    --model openai/clip-vit-large-patch14 \
+    --index-path data-vitl14/emoji_search/index.faiss --metadata-out data-vitl14/emoji_search/metadata.jsonl
+```
+画像・メタデータは base の `data/emoji_search/` を共有して読むので、変種側に openmoji を置く必要はない。
+(index_meta.json は `--index-path` と同じ場所に出力される。searcher は各 index の `model_id` を読んで
+同じモデルで query を埋め込むため、モデル指定の取り違えは起きない。)
+
+### 起動 (モデル比較を有効化)
+`MIDAIR_MODELS` に「`key|label|dataルート`」を `;` 区切りで並べる (**先頭が既定モデル**)。
+未設定なら単一モデル (従来挙動) で動く。`dataルート` は直下に `emoji_search/` を持つディレクトリ。
+```bash
+MIDAIR_DATA_DIR=$PWD/data \
+MIDAIR_MODELS="b32|ViT-B/32|$PWD/data;b16|ViT-B/16|$PWD/data-vitb16;l14|ViT-L/14|$PWD/data-vitl14" \
+uv run midair-web
 ```
 
 ## 今後

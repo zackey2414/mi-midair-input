@@ -154,6 +154,7 @@
   .badge.b5 { background:#173a6b; color:#9fc0ff; }
   .badge.b10 { background:#5b4a12; color:#ffd98f; }
   .badge.bmiss { background:#3a2020; color:#ff9a9a; }
+  .trial-meta { font-size:10px; color:var(--muted); margin-top:4px; line-height:1.35; }
 </style>
 </head>
 <body>
@@ -245,6 +246,10 @@
           <option value="symbols">記号</option>
           <option value="all">全ジャンル</option>
         </select>
+      </div>
+      <div class="row">
+        <label class="k">モデル</label>
+        <select id="evalModel" style="flex:1"><option>読込中…</option></select>
       </div>
       <div class="row">
         <button class="primary" id="evalStartBtn" onclick="startEval()">評価開始</button>
