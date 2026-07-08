@@ -14,9 +14,14 @@ wheels/
 /data/**
 !/data/**/
 !/data/**/.gitkeep
-# モデル比較用の別モデル index (ローカル構築 / Drive 取得の生成物)
-/data-vitb16/
-/data-vitl14/
+# モデル比較用の別モデル index。中身 (生成物) は管理外だが、
+# ディレクトリ構造は data/ と同様 .gitkeep で残す。
+/data-vitb16/**
+!/data-vitb16/**/
+!/data-vitb16/**/.gitkeep
+/data-vitl14/**
+!/data-vitl14/**/
+!/data-vitl14/**/.gitkeep
 
 # Model cache
 .cache/

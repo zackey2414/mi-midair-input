@@ -51,9 +51,13 @@ mi-midair-input/
 │   └── web/                    # midair-web: Web アプリ (FastAPI, 非同期検索)
 │       ├── scripts/           #   fetch_mediapipe.py (カメラ入力用 MediaPipe 取得)
 │       └── src/midair_web/     #   app.py / __main__.py / static/index.html
-└── data/                       # git 管理外 (.gitkeep のみ追跡)
-    ├── emoji_search/           #   openmoji/ + openmoji.json + index.faiss + metadata.jsonl
-    └── english_search/
+├── data/                       # git 管理外 (.gitkeep のみ追跡)
+│   ├── emoji_search/           #   openmoji/ + openmoji.json + index.faiss + metadata.jsonl
+│   └── english_search/
+├── data-vitb16/                # モデル比較用 ViT-B/16 index (中身は管理外, .gitkeep のみ追跡)
+│   └── emoji_search/
+└── data-vitl14/                # モデル比較用 ViT-L/14 index (中身は管理外, .gitkeep のみ追跡)
+    └── emoji_search/
 ```
 
 データはサブシステム別ディレクトリに隔離し、相互に干渉しない設計にしている。
@@ -99,6 +103,9 @@ docker compose --profile setup run --rm fetch
 ```
 
 - **OpenMoji / Drive faiss はこの 1 コマンドで両方そろう**（`fetch` サービスが `download_openmoji.py` と `gdown` を実行）。
+- ⚠️ **この `fetch` が取得するのは単一 Drive フォルダ (= base の ViT-B/32 index) だけ**。
+  **3 モデル比較 (B/32 / B/16 / L/14) の全 faiss は取得しない。** Docker はまだ単一モデル前提のため、
+  モデル比較は uv フロー ([`packages/web/README.md`](packages/web/README.md) の「精度評価 & モデル比較」) で動かす。
 - **MediaPipe は A-1 でイメージに焼き込み済みのため、ここでの準備は不要。**
 - 取得元 Drive フォルダを変えるとき: `MIDAIR_INDEX_URL="<別フォルダの共有リンク>" docker compose --profile setup run --rm fetch`。
 - ⚠️ `gdown --folder` は `data/<Drive フォルダ名>/` に展開する。`data/emoji_search/` に入るのは**共有フォルダ名が `emoji_search` の場合**（リネームすると別ディレクトリに落ちる）。
