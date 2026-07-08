@@ -73,6 +73,25 @@ uv run midair-web --port 9000          # ポートを変えたいとき
 評価パネルの **「モデル」** で **ViT-B/32 / B/16 / L/14** を切り替えられる。各モデルは自分の index で検索し、
 結果はモデル別に集計されるので、**同一 UI でモデルサイズごとの精度・速度を比較**できる。
 
+### セットアップ最短手順 (3 モデル比較が動くまで)
+別デバイスでも、リポジトリルートで**上から順に実行すれば環境が整う**:
+```bash
+uv sync                                                                   # 0) 依存を導入
+uv run python packages/emoji-search/scripts/download_openmoji.py          # 1) 表示用の絵文字画像(color)
+# 2) 3 モデルの index を Drive から取得 (CLIP 推論なし)
+uvx gdown --folder "https://drive.google.com/drive/folders/1GPY8HoBWiTls_NgCLLpe7ej4-Ue1DYGp" -O data          # ViT-B/32
+uvx gdown --folder "https://drive.google.com/drive/folders/17EnB_MTdp6TOCfloyOaYDPmyHbhDhO2d" -O data-vitb16   # ViT-B/16
+uvx gdown --folder "https://drive.google.com/drive/folders/1OL2IqQBFC8QwN07M6lPmkWrOr8KufBCh" -O data-vitl14   # ViT-L/14
+uv run python packages/web/scripts/fetch_mediapipe.py                     # 3) (カメラ入力を使う場合のみ) MediaPipe
+# 4) 3 モデルを登録して起動
+MIDAIR_DATA_DIR=$PWD/data \
+MIDAIR_MODELS="b32|ViT-B/32|$PWD/data;b16|ViT-B/16|$PWD/data-vitb16;l14|ViT-L/14|$PWD/data-vitl14" \
+uv run midair-web
+```
+**確認**: 別シェルで `curl -s localhost:8762/api/models` に 3 モデル (b32/b16/l14) が出れば環境OK。
+ブラウザで開き、**絵文字モード → 「絵文字入力評価」→ モデルを選んで「評価開始」**。
+（Drive を使わずローカルで index を作る場合は下の「用意 B」。各節は上記フローの詳細/代替。）
+
 ### データ配置
 モデルごとに index を分け、**同じ 3 ファイル**を「data ルート/emoji_search/」に置く:
 ```
