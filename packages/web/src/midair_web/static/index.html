@@ -152,9 +152,13 @@
     font-weight:700; white-space:nowrap; }
   .badge.b1 { background:#0f5132; color:#8fffbf; }
   .badge.b5 { background:#173a6b; color:#9fc0ff; }
+  .badge.b3 { background:#0f4a4a; color:#8ff0ff; }
   .badge.b10 { background:#5b4a12; color:#ffd98f; }
   .badge.bmiss { background:#3a2020; color:#ff9a9a; }
   .trial-meta { font-size:10px; color:var(--muted); margin-top:4px; line-height:1.35; }
+  .eval-countdown { font-size:22px; font-weight:800; color:var(--accent);
+    font-variant-numeric:tabular-nums; margin-bottom:6px; min-height:26px; }
+  .eval-countdown.urgent { color:#ff5b5b; }
 </style>
 </head>
 <body>
@@ -227,6 +231,7 @@
       <h2>精度評価</h2>
       <div id="evalTargetBox" class="eval-target" style="display:none">
         <div class="eval-progress" id="evalProgress"></div>
+        <div class="eval-countdown" id="evalCountdown"></div>
         <img id="evalTargetImg" alt="お題" />
         <div class="eval-target-label" id="evalTargetLabel"></div>
         <div class="row" style="justify-content:center">
@@ -250,6 +255,15 @@
       <div class="row">
         <label class="k">モデル</label>
         <select id="evalModel" style="flex:1"><option>読込中…</option></select>
+      </div>
+      <div class="row">
+        <label class="k">制限</label>
+        <select id="evalLimit">
+          <option value="0" selected>無制限</option>
+          <option value="5">5秒</option>
+          <option value="10">10秒</option>
+          <option value="20">20秒</option>
+        </select>
       </div>
       <div class="row">
         <button class="primary" id="evalStartBtn" onclick="startEval()">評価開始</button>
