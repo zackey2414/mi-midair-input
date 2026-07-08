@@ -84,7 +84,23 @@ data-vitl14/emoji_search/   index.faiss  metadata.jsonl  index_meta.json
   変種 (data-vitb16 等) には index の 3 ファイルだけあればよい。
 - FAISS index はデバイス非依存。**別マシンには data* ディレクトリをそのままコピーしてもよい** (下の構築は不要になる)。
 
-### 別デバイスでの用意 (ローカル構築)
+### 別デバイスでの用意 A: Drive から取得 (推奨・各環境で CLIP 推論しない)
+共有 Drive **`midair-flick-input-ViT`** (<https://drive.google.com/drive/folders/12fiVE0QkZdJ3L72cWHAkiU8WorMGdLbu>)
+にモデルごとの index を置いてある。`gdown --folder` は**フォルダの中身を `-O` 先へ展開**するので、
+中身が `emoji_search/` である**モデルフォルダ**の URL を使う (下記)。
+```bash
+uv sync
+# 表示用の絵文字画像 (color) だけ取得 (Drive の index は画像を含まない方針のため)
+uv run python packages/emoji-search/scripts/download_openmoji.py
+# 各モデルの index を Drive から取得 -> data*/emoji_search/{index.faiss, metadata.jsonl, index_meta.json}
+uvx gdown --folder "https://drive.google.com/drive/folders/1GPY8HoBWiTls_NgCLLpe7ej4-Ue1DYGp" -O data          # ViT-B/32
+uvx gdown --folder "https://drive.google.com/drive/folders/17EnB_MTdp6TOCfloyOaYDPmyHbhDhO2d" -O data-vitb16   # ViT-B/16
+uvx gdown --folder "https://drive.google.com/drive/folders/1OL2IqQBFC8QwN07M6lPmkWrOr8KufBCh" -O data-vitl14   # ViT-L/14
+```
+⚠️ 各 URL は「`emoji_search` を中身に持つモデルフォルダ」を指す。`emoji_search` 自体の URL を渡すと
+3 ファイルが `-O` 直下に落ちてパスがずれるので注意。
+
+### 別デバイスでの用意 B: ローカル構築 (Drive を使わない場合)
 ```bash
 uv sync
 # 1) OpenMoji 画像 (表示=color / 構築=black) を取得
@@ -102,6 +118,18 @@ uv run python packages/emoji-search/scripts/build_index.py --source-variant blac
 画像・メタデータは base の `data/emoji_search/` を共有して読むので、変種側に openmoji を置く必要はない。
 (index_meta.json は `--index-path` と同じ場所に出力される。searcher は各 index の `model_id` を読んで
 同じモデルで query を埋め込むため、モデル指定の取り違えは起きない。)
+
+### 表示画像の共有 (変種 data ルート → base の openmoji)
+`/emoji-img` は既定 (base) の `data/emoji_search/openmoji/` から配信するので、
+**下の比較起動 (MIDAIR_MODELS) では変種側に openmoji は不要**。
+ただし変種 data ルートを**単体で** (`MIDAIR_DATA_DIR=data-vitb16` 等で) 使うなら、
+base の openmoji を **相対 symlink** で共有しておく (画像を複製せず、data* ごとコピーしても壊れない):
+```bash
+# リポジトリルートで実行。data-vitb16 / data-vitl14 の openmoji を base に向ける
+for d in data-vitb16 data-vitl14; do
+  ln -sfn ../../data/emoji_search/openmoji "$d/emoji_search/openmoji"
+done
+```
 
 ### 起動 (モデル比較を有効化)
 `MIDAIR_MODELS` に「`key|label|dataルート`」を `;` 区切りで並べる (**先頭が既定モデル**)。
