@@ -46,6 +46,10 @@ uv run python packages/emoji-search/scripts/download_openmoji.py --variant both 
 uv run python packages/emoji-search/scripts/build_index.py --source-variant black
 ```
 
+別モデル (ViT-B/16 / L/14) の index を作って**精度・速度を比較**する手順は
+[`packages/web/README.md`](../web/README.md) の「精度評価 & モデル比較」を参照
+(`build_index.py --model <hf-id>` で任意の CLIP モデルにできる)。
+
 ## 既知の改善余地 (Codex レビューより)
 - annotation テキスト埋め込みの late fusion (`0.7*image + 0.3*text`) で語義の曖昧さを緩和
 - 手書き(線画) vs カラー絵文字のドメインギャップ対策 (線画 augmentation / 前処理)
