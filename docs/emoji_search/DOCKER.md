@@ -24,8 +24,8 @@ torch は **CPU 版** を `uv.lock` で固定し、CLIP モデルはイメージ
 docker compose build
 ```
 
-- CPU 版 torch / transformers / faiss を入れ、CLIP ViT-B/32 を焼き込む。
-- 初回は数分（モデル約 600MB のダウンロード込み）。以降はキャッシュされる。
+- CPU 版 torch / transformers / faiss を入れ、CLIP 3 モデル (ViT-B/32 / B/16 / L/14) を焼き込む。
+- 初回は数分（モデル計 約 2.9GB のダウンロード込み）。以降はキャッシュされる。
 
 ## 2. データを用意する（初回のみ・既存 data があればスキップ可）
 
@@ -45,11 +45,11 @@ Drive を使わずローカルで作る場合（コンテナ内の CLIP 推論�
 docker compose --profile setup run --rm prepare
 ```
 
-- 生成物: `./data/emoji_search/{openmoji/, openmoji.json, index.faiss, metadata.jsonl, index_meta.json}`
-- `fetch` は推論なしで軽い。`prepare` は CPU で数分（Apple Silicon のエミュレーションなら更に）。
-- 一度実行すればホストの `./data` に残るので、次回以降は不要。
+- 生成物: `./data/emoji_search/`（openmoji/ 付き）+ `./data-vitb16/emoji_search/` + `./data-vitl14/emoji_search/`（各 index.faiss / metadata.jsonl / index_meta.json）。
+- `fetch` は 3 モデル (B/32 / B/16 / L/14) の index を取得する。推論なしで軽い。`prepare` は CPU で数分（Apple Silicon のエミュレーションなら更に）。
+- 一度実行すればホストの `./data*` に残るので、次回以降は不要。
 - index はデバイス非依存。**Drive 取得版・ローカル構築版とも同じ（`openmoji_black` 線画）** で揃う。
-- 取得元 Drive フォルダを変える場合は `MIDAIR_INDEX_URL` を環境変数で指定（`fetch` が参照）。
+- `web` は `data` / `data-vitb16` / `data-vitl14` をマウントし `MIDAIR_MODELS` で 3 モデルを登録済み → 起動後そのまま「絵文字入力評価」でモデル比較できる。
 
 ### Drive の index を使う（各環境でビルドしない・推奨ルール）
 

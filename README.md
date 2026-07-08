@@ -91,24 +91,21 @@ mi-midair-input/
 docker compose build
 ```
 
-- CPU 版 torch / transformers / faiss を導入し、**CLIP ViT-B/32** をイメージに焼き込む（初回は CLIP 約 600MB のダウンロード込みで数分）。
+- CPU 版 torch / transformers / faiss を導入し、**CLIP 3 モデル (ViT-B/32 / B/16 / L/14)** をイメージに焼き込む（モデル計 約 2.9GB のダウンロード込みで数分〜。実行時オフラインで 3 モデル比較を動かすため全部焼く）。
 - **MediaPipe（手検出）の JS / wasm / モデルもビルド時に同梱**される（`Dockerfile` が `fetch_mediapipe.py` を実行）。→ カメラの Mid-Air 入力も**追加準備なし・実行時オフライン**で動く。
 
 ### A-2. データ準備（OpenMoji 画像 + Drive の faiss index）
 
 ```bash
-# 基本: 表示用カラー画像(公式) と index(Drive) をまとめて取得 (CLIP 推論なし・軽い)
+# 基本: 表示用カラー画像(公式) と 3 モデルの index(Drive) をまとめて取得 (CLIP 推論なし・軽い)
 docker compose --profile setup run --rm fetch
-#   -> data/emoji_search/{openmoji/, openmoji.json, index.faiss, metadata.jsonl, index_meta.json}
+#   -> data/emoji_search/ + data-vitb16/emoji_search/ + data-vitl14/emoji_search/  (各 index.faiss ほか)
 ```
 
-- **OpenMoji / Drive faiss はこの 1 コマンドで両方そろう**（`fetch` サービスが `download_openmoji.py` と `gdown` を実行）。
-- ⚠️ **この `fetch` が取得するのは単一 Drive フォルダ (= base の ViT-B/32 index) だけ**。
-  **3 モデル比較 (B/32 / B/16 / L/14) の全 faiss は取得しない。** Docker はまだ単一モデル前提のため、
-  モデル比較は uv フロー ([`packages/web/README.md`](packages/web/README.md) の「精度評価 & モデル比較」) で動かす。
-- **MediaPipe は A-1 でイメージに焼き込み済みのため、ここでの準備は不要。**
-- 取得元 Drive フォルダを変えるとき: `MIDAIR_INDEX_URL="<別フォルダの共有リンク>" docker compose --profile setup run --rm fetch`。
-- ⚠️ `gdown --folder` は `data/<Drive フォルダ名>/` に展開する。`data/emoji_search/` に入るのは**共有フォルダ名が `emoji_search` の場合**（リネームすると別ディレクトリに落ちる）。
+- **OpenMoji + 3 モデル (B/32 / B/16 / L/14) の index はこの 1 コマンドでそろう**（`fetch` が `download_openmoji.py` と各モデルの `gdown` を実行）。
+- **`web` サービスは 3 つの data ディレクトリをマウントし `MIDAIR_MODELS` を設定済み**。起動後そのまま「絵文字入力評価」でモデル比較できる（詳細は [`packages/web/README.md`](packages/web/README.md)）。
+- **CLIP 3 モデルと MediaPipe は A-1 でイメージに焼き込み済み**のため、実行時ダウンロード不要（オフライン動作）。
+- ⚠️ `gdown --folder` は取得先フォルダの**中身**を `-O` 先へ展開する（各モデルフォルダの中身が `emoji_search/` なので `data-vitb16/emoji_search/` に落ちる）。
 
 Drive を使わずローカルで index を構築する場合（線画ソースから、CLIP 推論で重い）:
 
