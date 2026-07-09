@@ -12,6 +12,7 @@ import { LM } from "../config.js";
 import {
   dist, fingerUp, $, clearPadCursor, drawPadCursor, setGesture, setCameraState, applyLangCamState,
 } from "../core.js";
+import { t, dirLabels } from "../i18n.js";
 
 // --- 調整用しきい値 ---
 let HOLD_MS    = 150;   // 行選択ポーズをこの ms 保持でロック
@@ -31,7 +32,7 @@ const ROWS = {
   "わ": ["わ", "を", "ん", "ー", "〜"],
   "、": ["　", "、", "。", "？", "！"],
 };
-const DIR_LABELS = ["中央", "左", "上", "右", "下"];
+// フリック方向ラベルは i18n の dirLabels() から取得 (中央/左… ⇄ Center/Left…)
 
 // --- 濁音/半濁音/小 のループ ---
 const DAKUTEN_CYCLES = [
@@ -133,18 +134,18 @@ function jpStatus(text) { const s = $("jpFlickStatus"); if (s) s.textContent = t
 
 function applyDakuten() {
   const o = $("jpFlickOutput");
-  if (!o || !o.value) { jpStatus("濁点化: 直前の文字がありません"); return; }
+  if (!o || !o.value) { jpStatus(t("jp.noPrev")); return; }
   const last = o.value.slice(-1);
   const next = DAKUTEN_NEXT[last];
   if (next) { o.value = o.value.slice(0, -1) + next; jpStatus(`${last} → ${next}`); }
-  else jpStatus(`「${last}」に対応形なし`);
+  else jpStatus(t("jp.noVariant", { last }));
 }
 
 export function jpFlickBackspace() { const o = $("jpFlickOutput"); if (o) o.value = o.value.slice(0, -1); }
 export function jpFlickClear() {
   const o = $("jpFlickOutput"); if (o) o.value = "";
   resetFull();
-  jpStatus("クリアしました");
+  jpStatus(t("jp.cleared"));
 }
 
 // --- 状態機械 ---
@@ -296,7 +297,7 @@ function updateJapanese(hand, now) {
 
     if (!midFlip) {
       // パー → リセット (行ロック解除)
-      if (hand.isOpen) { resetFull(); jpStatus("キャンセル"); return; }
+      if (hand.isOpen) { resetFull(); jpStatus(t("jp.cancel")); return; }
 
       // グー → あ段を確定してロック解除 (即確定。削除ジェスチャーとの衝突を避けるため
       // 濁点サイクルへは繋げない。濁点まで続けたい場合はフリップ方式を使う)
@@ -306,9 +307,9 @@ function updateJapanese(hand, now) {
         if (flickArmed) {
           const kana = ROWS[lockedRow][0];
           jpAppend(kana);
-          jpStatus(`${lockedRow}行 中央 → ${kana}`);
+          jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[0], kana }));
         } else {
-          jpStatus(`${lockedRow}行 終了`);
+          jpStatus(t("jp.rowEnd", { row: lockedRow }));
         }
         resetRowState();
         return;
@@ -317,15 +318,15 @@ function updateJapanese(hand, now) {
       // ポーズが変わった → HOLD_MS で新しい行へ切り替え (レスト不要)
       // flickStart はパーからポーズへの遷移時のみ更新するためここでは変えない
       if (row !== lockedRow) {
-        if (!row) { rowPending = null; jpStatus(`${lockedRow}行 (未割り当て)`); return; }
+        if (!row) { rowPending = null; jpStatus(t("jp.rowUnassigned", { row: lockedRow })); return; }
         if (!rowPending || rowPending.row !== row) {
           rowPending = { row, since: now };
         } else if (now - rowPending.since >= HOLD_MS) {
           lockedRow  = row;
           rowPending = null;
           flickArmed = false;   // 基準点へ戻るまでフリック判定を停止
-          jpStatus(`${row}行: マージンに戻ってからフリック / グー or フリップであ段`);
-        } else { jpStatus(`${row}行…`); }
+          jpStatus(t("jp.rowReturn", { row }));
+        } else { jpStatus(t("jp.rowPending", { row })); }
         return;
       }
     }
@@ -347,7 +348,7 @@ function updateJapanese(hand, now) {
         if (hystDir !== 0 && hystDir !== _lastDir) {
           const kana = ROWS[lockedRow][hystDir];
           jpAppend(kana);
-          jpStatus(`${lockedRow}行 ${DIR_LABELS[hystDir]} → ${kana}`);
+          jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[hystDir], kana }));
           _modOrigChar = kana; _modState = 0;
           _modBaseRoll = hand.orientation.roll; _modIsFlipping = false;
           _lastDir = hystDir;
@@ -361,8 +362,8 @@ function updateJapanese(hand, now) {
         flickArmed = true; leftMargin = false; resetModState(); _lastDir = 0;
         centerBaseRoll = hand.orientation.roll; centerFlipping = false;
       }
-      const modLabel = _modState === 1 ? " [小]" : _modState === 2 ? " [濁]" : _modState === 3 ? " [半濁]" : "";
-      jpStatus(`${lockedRow}行: 基準に戻して次フリック${modLabel} / フリップで濁点`);
+      const modLabel = _modState === 1 ? t("jp.modSmall") : _modState === 2 ? t("jp.modDaku") : _modState === 3 ? t("jp.modHandaku") : "";
+      jpStatus(t("jp.reflick", { row: lockedRow, mod: modLabel }));
       return;
     }
 
@@ -370,7 +371,7 @@ function updateJapanese(hand, now) {
     if (dir !== 0) {
       const kana = ROWS[lockedRow][dir];
       jpAppend(kana);
-      jpStatus(`${lockedRow}行 ${DIR_LABELS[dir]} → ${kana}`);
+      jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[dir], kana }));
       _modOrigChar = kana; _modState = 0;
       _modBaseRoll = hand.orientation.roll; _modIsFlipping = false;
       _lastDir = dir;
@@ -386,7 +387,7 @@ function updateJapanese(hand, now) {
         centerFlipping = true;
         if (lockedRow === "わ") {
           // わ行フリップ = 全角スペース (かな入力のみ・変換機能なし)
-          jpAppend("　"); jpStatus("全角スペース");
+          jpAppend("　"); jpStatus(t("jp.fullSpace"));
           flickArmed = false; return;
         }
         const base = ROWS[lockedRow][0];
@@ -394,7 +395,7 @@ function updateJapanese(hand, now) {
         const hasDaku = !!DAKUTEN_MAP[base];
         const kana = hasDaku ? DAKUTEN_MAP[base] : base;
         jpAppend(kana);
-        jpStatus(`${lockedRow}行 中央 → ${kana}`);
+        jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[0], kana }));
         // 確定に使ったこのフリップ自体を「1回目」として消費済み扱いにし、
         // 次にニュートラルへ戻ってからのフリップでさらにサイクルさせる
         _modOrigChar = base; _modState = hasDaku ? 2 : 0;
@@ -406,9 +407,9 @@ function updateJapanese(hand, now) {
       }
     }
     if (lockedRow === "わ") {
-      jpStatus(`わ行: フリックで母音 / グー→わ / フリップ=全角スペース`);
+      jpStatus(t("jp.waHint"));
     } else {
-      jpStatus(`${lockedRow}行: フリックで母音 / グー or フリップであ段`);
+      jpStatus(t("jp.rowHint", { row: lockedRow }));
     }
     return;
   }
@@ -417,12 +418,12 @@ function updateJapanese(hand, now) {
   if (isRest) {
     rowPending = null;
     if (hand.isOpen) lastOpenPos = hand.palmPoint;
-    jpStatus(hand.fingers.pinky ? "P: は/ま/や/ら/わ/句行" : "あ/か/さ/た/な行");
+    jpStatus(hand.fingers.pinky ? t("jp.restPinky") : t("jp.restBase"));
     return;
   }
 
   // ---- 中間状態: 行選択 ----
-  if (!row) { rowPending = null; jpStatus("未割り当て"); return; }
+  if (!row) { rowPending = null; jpStatus(t("jp.unassigned")); return; }
   if (!rowPending || rowPending.row !== row) {
     rowPending = { row, since: now };
   } else if (now - rowPending.since >= HOLD_MS) {
@@ -431,8 +432,8 @@ function updateJapanese(hand, now) {
     rowPending = null; flickArmed = true; leftMargin = false;
     resetModState();
     centerBaseRoll = hand.orientation.roll; centerFlipping = false;
-    jpStatus(`${row}行: フリックで母音 / グー or フリップであ段`);
-  } else { jpStatus(`${row}行…`); }
+    jpStatus(t("jp.rowHint", { row }));
+  } else { jpStatus(t("jp.rowPending", { row })); }
 }
 
 export default {
@@ -444,7 +445,7 @@ export default {
     // JP専用削除: フリップ即戻し→1文字, 保持→全削除
     // (行ロック中は centerBaseRoll = このセッションの真のニュートラル角度をヒントとして渡す)
     const del = updateDelete(hand, now);
-    if (del.action === "delete1")        { jpFlickBackspace(); jpStatus("1文字削除"); }
+    if (del.action === "delete1")        { jpFlickBackspace(); jpStatus(t("jp.delOne")); }
     else if (del.action === "deleteAll") { jpFlickClear(); }
     if (hand.isFist) {
       if (del.isFlipped && octx) {
@@ -456,11 +457,11 @@ export default {
       const roll = hand.orientation.roll;
       if (del.phase === "flipped") {
         const remaining = Math.max(0, Math.round(DEL_QUICK_MS - del.flippedMs));
-        jpStatus(`roll:${roll.toFixed(0)}° フリップ検出 / 戻す→1文字(${remaining}ms) / 保持→全削除(${Math.round(del.progress * 100)}%)`);
+        jpStatus(t("jp.delFlip", { roll: roll.toFixed(0), ms: remaining, pct: Math.round(del.progress * 100) }));
       } else if (del.phase === "armed") {
-        jpStatus(`roll:${roll.toFixed(0)}° グー検出 / 傾けて削除`);
+        jpStatus(t("jp.delArmed", { roll: roll.toFixed(0) }));
       } else {
-        jpStatus(`roll:${roll.toFixed(0)}° グー`);
+        jpStatus(t("jp.delFist", { roll: roll.toFixed(0) }));
       }
     }
     { const _pc = $("padCursor");
@@ -592,9 +593,9 @@ export default {
         g.restore();
       }
     }
-    setGesture(langInfo.fired ? `-> ${langInfo.label}` : "日本語");
+    setGesture(langInfo.fired ? `-> ${langInfo.label}` : t("mode.japanese"));
     if (!applyLangCamState(langInfo)) {
-      setCameraState("detecting", "日本語入力モード", "指を伸ばして行選択 / フリックで方向 or グー or フリップであ段");
+      setCameraState("detecting", t("cam.modeLabel", { label: t("mode.japanese") }), t("jp.camDetail"));
     }
   },
 };
@@ -608,18 +609,18 @@ export function renderJapaneseSettings() {
   root.innerHTML = "";
 
   const thTitle = document.createElement("div");
-  thTitle.className = "jp-cfg-title"; thTitle.textContent = "検出しきい値";
+  thTitle.className = "jp-cfg-title"; thTitle.textContent = t("jp.cfgThresholds");
   root.appendChild(thTitle);
-  root.appendChild(makeSlider("行ロック(ms)", 60, 600, 10, HOLD_MS, (v) => { HOLD_MS = v; }));
-  root.appendChild(makeSlider("フリック距離", 0.02, 1.00, 0.01, FLICK_DIST, (v) => { FLICK_DIST = v; }));
+  root.appendChild(makeSlider(t("jp.cfgHold"), 60, 600, 10, HOLD_MS, (v) => { HOLD_MS = v; }));
+  root.appendChild(makeSlider(t("jp.cfgFlick"), 0.02, 1.00, 0.01, FLICK_DIST, (v) => { FLICK_DIST = v; }));
 
   const mapTitle = document.createElement("div");
-  mapTitle.className = "jp-cfg-title"; mapTitle.textContent = "運指表";
+  mapTitle.className = "jp-cfg-title"; mapTitle.textContent = t("jp.cfgMap");
   root.appendChild(mapTitle);
 
   const legend = document.createElement("div");
   legend.className = "jp-cfg-legend";
-  legend.innerHTML = "<b>T</b>=親指 <b>I</b>=人差 <b>M</b>=中 <b>P</b>=小指 &nbsp;／&nbsp; 列: ・(中央) ← ↑ → ↓";
+  legend.innerHTML = t("jp.cfgLegend");
   root.appendChild(legend);
 
   // グリッド表: 指の組み合わせ | グー | ← | ↑ | → | ↓
@@ -630,7 +631,7 @@ export function renderJapaneseSettings() {
   // ヘッダ行
   const hdr = document.createElement("div");
   hdr.className = "jp-flick-row jp-flick-hdr";
-  hdr.innerHTML = `<span>指</span><span>・</span><span>←</span><span>↑</span><span>→</span><span>↓</span>`;
+  hdr.innerHTML = `<span>${t("jp.cfgFinger")}</span><span>・</span><span>←</span><span>↑</span><span>→</span><span>↓</span>`;
   table.appendChild(hdr);
 
   for (const r of rowMap) {

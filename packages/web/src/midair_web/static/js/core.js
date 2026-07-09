@@ -594,6 +594,9 @@ export function applyLang() {
   if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = getLang();
   applyStaticI18n();                              // data-i18n を持つ静的要素
   const lt = $("langToggle"); if (lt) lt.textContent = t("lang.toggle");
+  // カメラ開始/停止ボタンは稼働状態に依存する動的ラベル。applyStaticI18n は
+  // data-i18n="btn.camStart" で無条件に「開始」へ戻すため、稼働中は上書きし直す。
+  const cb = $("camBtn"); if (cb) cb.textContent = t(mpRunning ? "btn.camStop" : "btn.camStart");
   renderJapaneseSettings();                       // 運指/しきい値エディタ (t() で組み立て)
   renderEnglishSettings();
   refreshTest();                                  // テストお題/統計ラベル
