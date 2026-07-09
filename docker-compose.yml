@@ -1,6 +1,9 @@
 # Intel Mac 等でのローカル実行用。詳しい手順は DOCKER.md を参照。
+# 3 モデル比較 (ViT-B/32 / B/16 / L/14) 対応: data / data-vitb16 / data-vitl14 を
+# それぞれマウントし、web は MIDAIR_MODELS で 3 モデルを登録する。
+# フロント (static/js, index.html) はホストから bind-mount するので、再ビルド無しで反映できる。
 services:
-  # Web アプリ (テキスト / 手書き検索)。http://localhost:8762
+  # Web アプリ (テキスト / 手書き検索 + 3 モデル比較 + 日本語かな漢字変換)。http://localhost:8762
   web:
     build:
       context: .
@@ -12,14 +15,23 @@ services:
       # 空きポートを自動で選ぶなら scripts/run-web.sh を使う。
       - "${MIDAIR_WEB_PORT:-8762}:8000"
     volumes:
-      - ./data:/app/data          # 画像 + index をホストと共有 (永続)
+      - ./data:/app/data                  # base (ViT-B/32) + 表示用 openmoji
+      - ./data-vitb16:/app/data-vitb16    # ViT-B/16 index
+      - ./data-vitl14:/app/data-vitl14    # ViT-L/14 index
+      # フロントはホストから bind-mount (編集を再ビルド無しで反映)
       - ./packages/web/src/midair_web/static/js:/app/packages/web/src/midair_web/static/js
       - ./packages/web/src/midair_web/static/index.html:/app/packages/web/src/midair_web/static/index.html
+    environment:
+      # 3 モデルを登録 (先頭が既定)。表示画像は base の /app/data から配信。
+      # 未取得のモデルは評価パネルで選んだとき初めてエラーになる (既定 b32 は動く)。
+      MIDAIR_DATA_DIR: /app/data
+      MIDAIR_MODELS: "b32|ViT-B/32|/app/data;b16|ViT-B/16|/app/data-vitb16;l14|ViT-L/14|/app/data-vitl14"
     restart: unless-stopped
 
-  # 基本: 表示用カラー画像を公式から + index を Drive から取得 (各環境で CLIP 推論しない)。
+  # 基本: 表示用カラー画像を公式から + 3 モデルの index を Drive から取得 (各環境で CLIP 推論しない)。
   #   docker compose --profile setup run --rm fetch
-  #   別フォルダにしたいときは MIDAIR_INDEX_URL を環境変数で上書き。
+  # URL は各モデルフォルダ (中身が emoji_search/) を指す。共有フォルダ:
+  #   https://drive.google.com/drive/folders/12fiVE0QkZdJ3L72cWHAkiU8WorMGdLbu
   fetch:
     image: midair-input:latest
     build:
@@ -28,11 +40,15 @@ services:
     profiles: ["setup"]
     volumes:
       - ./data:/app/data
+      - ./data-vitb16:/app/data-vitb16
+      - ./data-vitl14:/app/data-vitl14
     command: >
       sh -c "python packages/emoji-search/scripts/download_openmoji.py &&
-              gdown --folder '${MIDAIR_INDEX_URL:-https://drive.google.com/drive/folders/1ucgsVXXp6jOTWapOPTLsz9i-wpnPS652}' -O data"
+              gdown --folder 'https://drive.google.com/drive/folders/1GPY8HoBWiTls_NgCLLpe7ej4-Ue1DYGp' -O data &&
+              gdown --folder 'https://drive.google.com/drive/folders/17EnB_MTdp6TOCfloyOaYDPmyHbhDhO2d' -O data-vitb16 &&
+              gdown --folder 'https://drive.google.com/drive/folders/1OL2IqQBFC8QwN07M6lPmkWrOr8KufBCh' -O data-vitl14"
 
-  # 代替: Drive を使わず、コンテナ内の CLIP 推論で index を構築 (重い)。
+  # 代替: Drive を使わず、コンテナ内の CLIP 推論で 3 モデルの index を構築 (重い)。
   #   docker compose --profile setup run --rm prepare
   prepare:
     image: midair-input:latest
@@ -42,6 +58,10 @@ services:
     profiles: ["setup"]
     volumes:
       - ./data:/app/data
+      - ./data-vitb16:/app/data-vitb16
+      - ./data-vitl14:/app/data-vitl14
     command: >
       sh -c "python packages/emoji-search/scripts/download_openmoji.py --variant both &&
-              python packages/emoji-search/scripts/build_index.py --source-variant black"
+              python packages/emoji-search/scripts/build_index.py --source-variant black --model openai/clip-vit-base-patch32 &&
+              python packages/emoji-search/scripts/build_index.py --source-variant black --model openai/clip-vit-base-patch16 --index-path data-vitb16/emoji_search/index.faiss --metadata-out data-vitb16/emoji_search/metadata.jsonl &&
+              python packages/emoji-search/scripts/build_index.py --source-variant black --model openai/clip-vit-large-patch14 --index-path data-vitl14/emoji_search/index.faiss --metadata-out data-vitl14/emoji_search/metadata.jsonl"

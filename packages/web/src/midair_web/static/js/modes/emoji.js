@@ -38,8 +38,9 @@ export default {
     }
 
     // 共通ジェスチャー: 決定=検索, 削除=クリア
+    // 評価モード中は検索でなく「この絵で確定」(お題の記録) にフォークする。
     if (gesture.fired === "confirm") {
-      searchImage("camera");
+      if (window.__evalActive) window.__evalSubmit(); else searchImage("camera");
       setFlash("検索", now + 500);
     } else if (gesture.fired === "delete") {
       clearPad();

@@ -15,6 +15,14 @@ wheels/
 !/data/**/
 !/data/**/.gitkeep
 
+# モデル比較用の別 index ルート (ViT-B/16 / L/14)。中身は git 管理外、構造だけ残す。
+/data-vitb16/**
+!/data-vitb16/**/
+!/data-vitb16/**/.gitkeep
+/data-vitl14/**
+!/data-vitl14/**/
+!/data-vitl14/**/.gitkeep
+
 # Model cache
 .cache/
 

@@ -27,8 +27,11 @@ COPY packages/ ./packages/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# 3) CLIP モデル (ViT-B/32) をイメージに焼き込む -> 実行時のダウンロード不要
-RUN python -c "from transformers import CLIPModel, CLIPProcessor; m='openai/clip-vit-base-patch32'; CLIPModel.from_pretrained(m); CLIPProcessor.from_pretrained(m)"
+# 3) CLIP モデル (ViT-B/32 / B/16 / L/14) をイメージに焼き込む -> 実行時のダウンロード不要。
+#    3 モデル比較を実行時オフライン (HF_HUB_OFFLINE=1) でも動かすため全モデルを焼く。
+RUN python -c "from transformers import CLIPModel, CLIPProcessor; \
+[(CLIPModel.from_pretrained(m), CLIPProcessor.from_pretrained(m)) for m in \
+('openai/clip-vit-base-patch32','openai/clip-vit-base-patch16','openai/clip-vit-large-patch14')]"
 
 # 3b) MediaPipe (Hand Landmarker) の JS/wasm/モデルを static/vendor に焼き込む
 #     -> ブラウザの Mid-Air 入力 (手検出) も実行時ネット不要 (完全オフライン)

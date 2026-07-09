@@ -166,128 +166,6 @@ const DEL_ROLL_NEUTRAL = 30;    // この範囲内に戻ったら中立 (deg)
 let _delCanFire   = false;
 let _delFlipAt    = -1;
 
-// --- 変換ステートマシン ---
-let _convMode     = false;
-let _convSegs     = [];      // [{reading, candidates, sel}]
-let _convSegIdx   = 0;
-let _convOrigText = "";      // 変換前テキスト (キャンセル用)
-let _convLoading  = false;
-
-const CONV_CAND_SHOW = 8;
-
-function _updateConvPanel() {
-  const panel = $("convPanel");
-  if (!panel) return;
-  if (!_convMode) { panel.style.display = "none"; return; }
-  panel.style.display = "";
-
-  // セグメントバー: 全セグメントを並べ、アクティブを強調
-  const segBar = $("convSegBar");
-  if (segBar) {
-    segBar.innerHTML = "";
-    _convSegs.forEach((s, i) => {
-      if (i > 0) {
-        const sep = document.createElement("span");
-        sep.className = "conv-sep"; sep.textContent = "｜";
-        segBar.appendChild(sep);
-      }
-      const el = document.createElement("span");
-      el.className = i === _convSegIdx ? "conv-seg active" : "conv-seg";
-      el.textContent = s.candidates.length ? s.candidates[s.sel] : s.reading;
-      const idx = i;
-      el.addEventListener("click", () => { _convSegIdx = idx; _updateConvPanel(); });
-      segBar.appendChild(el);
-    });
-  }
-
-  // 候補リスト: アクティブセグメントの候補を最大 CONV_CAND_SHOW 件表示
-  const candList = $("convCandList");
-  if (candList) {
-    candList.innerHTML = "";
-    const seg = _convSegs[_convSegIdx];
-    if (seg) {
-      seg.candidates.slice(0, CONV_CAND_SHOW).forEach((c, i) => {
-        const btn = document.createElement("button");
-        btn.className = i === seg.sel ? "conv-cand active" : "conv-cand";
-        btn.textContent = c;
-        const selIdx = i;
-        btn.addEventListener("click", () => {
-          seg.sel = selIdx;
-          _convDisplay();
-          _updateConvPanel();
-        });
-        candList.appendChild(btn);
-      });
-    }
-  }
-}
-
-function _convDisplay() {
-  const o = $("jpFlickOutput");
-  if (o) o.value = _convSegs.map(s => s.candidates.length ? s.candidates[s.sel] : s.reading).join("");
-  _updateConvPanel();
-}
-
-async function _startConversion() {
-  if (_convLoading) return;
-  const o = $("jpFlickOutput");
-  if (!o || !o.value) { jpAppend("　"); jpStatus("全角スペース"); return; }
-  _convOrigText = o.value;
-  _convLoading = true;
-  jpStatus("変換中...");
-  try {
-    const r = await fetch("/api/convert/kanji", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: _convOrigText }),
-    });
-    const d = await r.json();
-    _convMode   = true;
-    _convSegs   = d.segments.map(s => ({ ...s }));
-    _convSegIdx = 0;
-    _convDisplay();  // _updateConvPanel も内部で呼ばれる
-    const seg = _convSegs[0];
-    jpStatus(`変換[1/${_convSegs.length}]: ${seg?.candidates[seg.sel] || "?"} / わフリップ=次 / 、フリップ=前 / グー=確定`);
-  } catch (e) {
-    jpStatus(`変換エラー: ${e}`);
-    _convOrigText = "";
-  } finally {
-    _convLoading = false;
-  }
-}
-
-function _convNext() {
-  if (!_convMode || !_convSegs.length) return;
-  const seg = _convSegs[_convSegIdx];
-  if (!seg || !seg.candidates.length) return;
-  seg.sel = (seg.sel + 1) % seg.candidates.length;
-  _convDisplay();
-  jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg.candidates[seg.sel]}`);
-}
-
-function _convPrev() {
-  if (!_convMode || !_convSegs.length) return;
-  const seg = _convSegs[_convSegIdx];
-  if (!seg || !seg.candidates.length) return;
-  seg.sel = (seg.sel - 1 + seg.candidates.length) % seg.candidates.length;
-  _convDisplay();
-  jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg.candidates[seg.sel]}`);
-}
-
-function _convConfirm() {
-  if (!_convMode) return;
-  _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
-  _updateConvPanel();
-  jpStatus("変換確定");
-}
-
-function _convCancel() {
-  const o = $("jpFlickOutput");
-  if (_convMode && o) o.value = _convOrigText;
-  _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
-  _updateConvPanel();
-}
-
 // 2つの角度(deg)の差を -180..180 に正規化して返す
 function angleDelta(a, b) {
   let d = a - b;
@@ -402,7 +280,6 @@ function resetRowState() {
 function resetFull() {
   resetRowState();
   resetModState();
-  _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
 }
 
 function updateJapanese(hand, now) {
@@ -418,15 +295,14 @@ function updateJapanese(hand, now) {
     const midFlip  = Math.abs(angleDelta(hand.orientation.roll, rollBase)) > MOD_ROLL_NEUTRAL;
 
     if (!midFlip) {
-      // パー → キャンセル (変換中ならテキスト復元)
-      if (hand.isOpen) { _convCancel(); resetFull(); jpStatus("キャンセル"); return; }
+      // パー → リセット (行ロック解除)
+      if (hand.isOpen) { resetFull(); jpStatus("キャンセル"); return; }
 
       // グー → あ段を確定してロック解除 (即確定。削除ジェスチャーとの衝突を避けるため
       // 濁点サイクルへは繋げない。濁点まで続けたい場合はフリップ方式を使う)
       // ただし、このロック中に既にフリック/フリップで何か確定済み(flickArmed=false)の場合は
       // 「あ段」を二重に追加せず、単に終了(ロック解除)だけ行う
       if (hand.isFist) {
-        if (_convMode) { _convConfirm(); resetRowState(); return; }
         if (flickArmed) {
           const kana = ROWS[lockedRow][0];
           jpAppend(kana);
@@ -445,7 +321,6 @@ function updateJapanese(hand, now) {
         if (!rowPending || rowPending.row !== row) {
           rowPending = { row, since: now };
         } else if (now - rowPending.since >= HOLD_MS) {
-          if (_convMode) _convConfirm();
           lockedRow  = row;
           rowPending = null;
           flickArmed = false;   // 基準点へ戻るまでフリック判定を停止
@@ -470,7 +345,6 @@ function updateJapanese(hand, now) {
       if (d >= FLICK_DIST) {
         const hystDir = flickDirHyst(dx, dy, _lastDir);
         if (hystDir !== 0 && hystDir !== _lastDir) {
-          if (_convMode) _convConfirm();
           const kana = ROWS[lockedRow][hystDir];
           jpAppend(kana);
           jpStatus(`${lockedRow}行 ${DIR_LABELS[hystDir]} → ${kana}`);
@@ -487,19 +361,13 @@ function updateJapanese(hand, now) {
         flickArmed = true; leftMargin = false; resetModState(); _lastDir = 0;
         centerBaseRoll = hand.orientation.roll; centerFlipping = false;
       }
-      if (_convMode) {
-        const seg = _convSegs[_convSegIdx];
-        jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg?.candidates[seg.sel] || "?"} / わフリップ=次 / 、フリップ=前 / グー=確定`);
-      } else {
-        const modLabel = _modState === 1 ? " [小]" : _modState === 2 ? " [濁]" : _modState === 3 ? " [半濁]" : "";
-        jpStatus(`${lockedRow}行: 基準に戻して次フリック${modLabel} / フリップで濁点`);
-      }
+      const modLabel = _modState === 1 ? " [小]" : _modState === 2 ? " [濁]" : _modState === 3 ? " [半濁]" : "";
+      jpStatus(`${lockedRow}行: 基準に戻して次フリック${modLabel} / フリップで濁点`);
       return;
     }
 
     // フリック受付中: 動かせば方向を即確定
     if (dir !== 0) {
-      if (_convMode) _convConfirm();
       const kana = ROWS[lockedRow][dir];
       jpAppend(kana);
       jpStatus(`${lockedRow}行 ${DIR_LABELS[dir]} → ${kana}`);
@@ -517,17 +385,10 @@ function updateJapanese(hand, now) {
       if (!centerFlipping && Math.abs(rd) > MOD_ROLL_FLIP) {
         centerFlipping = true;
         if (lockedRow === "わ") {
-          // わ行フリップ = 変換開始 (normal) / 次候補 (conv中)
-          if (_convMode) { _convNext(); }
-          else {
-            const o = $("jpFlickOutput");
-            if (o && o.value) { _startConversion(); }
-            else { jpAppend("　"); jpStatus("全角スペース"); }
-          }
+          // わ行フリップ = 全角スペース (かな入力のみ・変換機能なし)
+          jpAppend("　"); jpStatus("全角スペース");
           flickArmed = false; return;
         }
-        if (_convMode && lockedRow === "、") { _convPrev(); flickArmed = false; return; }
-        if (_convMode) _convConfirm();
         const base = ROWS[lockedRow][0];
         // 濁点があれば素の文字を経由せず、確定と同時に濁点形から始める
         const hasDaku = !!DAKUTEN_MAP[base];
@@ -544,11 +405,8 @@ function updateJapanese(hand, now) {
         centerFlipping = false; centerBaseRoll = roll;
       }
     }
-    if (_convMode) {
-      const seg = _convSegs[_convSegIdx];
-      jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg?.candidates[seg.sel] || "?"} / わフリップ=次 / 、フリップ=前 / グー=確定`);
-    } else if (lockedRow === "わ") {
-      jpStatus(`わ行: フリックで母音 / グー=スペース / フリップ=変換開始`);
+    if (lockedRow === "わ") {
+      jpStatus(`わ行: フリックで母音 / グー→わ / フリップ=全角スペース`);
     } else {
       jpStatus(`${lockedRow}行: フリックで母音 / グー or フリップであ段`);
     }
@@ -568,7 +426,6 @@ function updateJapanese(hand, now) {
   if (!rowPending || rowPending.row !== row) {
     rowPending = { row, since: now };
   } else if (now - rowPending.since >= HOLD_MS) {
-    if (_convMode) _convConfirm();
     lockedRow  = row;
     flickStart = lastOpenPos ?? hand.palmPoint;
     rowPending = null; flickArmed = true; leftMargin = false;

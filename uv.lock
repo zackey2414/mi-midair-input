@@ -413,7 +413,6 @@ source = { editable = "packages/web" }
 dependencies = [
     { name = "emoji-search" },
     { name = "fastapi" },
-    { name = "japanese-search" },
     { name = "midair-shared" },
     { name = "uvicorn" },
 ]
@@ -422,7 +421,6 @@ dependencies = [
 requires-dist = [
     { name = "emoji-search", editable = "packages/emoji-search" },
     { name = "fastapi" },
-    { name = "japanese-search", editable = "packages/japanese-search" },
     { name = "midair-shared", editable = "packages/shared" },
     { name = "uvicorn" },
 ]
