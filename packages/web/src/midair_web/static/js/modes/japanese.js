@@ -168,6 +168,219 @@ const DEL_ROLL_NEUTRAL = 30;    // この範囲内に戻ったら中立 (deg)
 let _delCanFire   = false;
 let _delFlipAt    = -1;
 
+// --- 変換ステートマシン ---
+let _convMode     = false;
+let _convSegs     = [];      // [{reading, candidates, sel}]
+let _convSegIdx   = 0;
+let _convOrigText = "";      // 変換前テキスト (キャンセル用)
+let _convLoading  = false;
+
+const CONV_CAND_SHOW = 8;
+
+function _updateConvPanel() {
+  const panel = $("convPanel");
+  if (!panel) return;
+  if (!_convMode) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+
+  const candList = $("convCandList");
+  if (!candList) return;
+  candList.innerHTML = "";
+  const seg = _convSegs[_convSegIdx];
+  if (!seg) return;
+  seg.candidates.slice(0, CONV_CAND_SHOW).forEach((c, i) => {
+    const btn = document.createElement("button");
+    btn.className = i === seg.sel ? "conv-cand-item active" : "conv-cand-item";
+    btn.textContent = c;
+    btn.addEventListener("click", () => {
+      seg.sel = i;
+      _convDisplay();
+      _updateConvPanel();
+    });
+    candList.appendChild(btn);
+  });
+}
+
+function _convDisplay() {
+  const o = $("jpFlickOutput");
+  if (o) o.value = _convSegs.map(s => s.candidates.length ? s.candidates[s.sel] : s.reading).join("");
+  _updateConvPanel();
+}
+
+async function _startConversion() {
+  if (_convLoading) return;
+  const o = $("jpFlickOutput");
+  if (!o || !o.value) { jpAppend("　"); jpStatus("全角スペース"); return; }
+  _convOrigText = o.value;
+  _convLoading = true;
+  jpStatus("変換中...");
+  try {
+    const r = await fetch("/api/convert/kanji", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: _convOrigText }),
+    });
+    const d = await r.json();
+    _convMode   = true;
+    _convSegs   = d.segments.map(s => ({ ...s }));
+    _convSegIdx = 0;
+    _convDisplay();  // _updateConvPanel も内部で呼ばれる
+    const seg = _convSegs[0];
+    jpStatus(`変換[1/${_convSegs.length}]: ${seg?.candidates[seg.sel] || "?"} / わフリップ=次 / 、フリップ=前 / グー=確定`);
+  } catch (e) {
+    jpStatus(`変換エラー: ${e}`);
+    _convOrigText = "";
+  } finally {
+    _convLoading = false;
+  }
+}
+
+function _convNext() {
+  if (!_convMode || !_convSegs.length) return;
+  const seg = _convSegs[_convSegIdx];
+  if (!seg || !seg.candidates.length) return;
+  seg.sel = (seg.sel + 1) % seg.candidates.length;
+  _convDisplay();
+  jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg.candidates[seg.sel]}`);
+}
+
+function _convPrev() {
+  if (!_convMode || !_convSegs.length) return;
+  const seg = _convSegs[_convSegIdx];
+  if (!seg || !seg.candidates.length) return;
+  seg.sel = (seg.sel - 1 + seg.candidates.length) % seg.candidates.length;
+  _convDisplay();
+  jpStatus(`変換[${_convSegIdx+1}/${_convSegs.length}]: ${seg.candidates[seg.sel]}`);
+}
+
+function _convConfirm() {
+  if (!_convMode) return;
+  _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
+  _updateConvPanel();
+  jpStatus("変換確定");
+}
+
+function _convCancel() {
+  const o = $("jpFlickOutput");
+  if (_convMode && o) o.value = _convOrigText;
+  _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
+  _updateConvPanel();
+}
+
+// 2つの角度(deg)の差を -180..180 に正規化して返す
+function angleDelta(a, b) {
+  let d = a - b;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
+}
+
+function updateDelete(hand, now) {
+  const roll = hand.orientation.roll;
+  const isNeutral = Math.abs(roll) < DEL_ROLL_NEUTRAL;
+  const isFlipped = Math.abs(roll) > DEL_ROLL_FLIP;
+  const ret = (action, extra = {}) =>
+    ({ action, phase: "idle", progress: 0, flippedMs: 0,
+       isFlipped: _delCanFire && isFlipped, ...extra });
+
+  if (!hand.isFist) {
+    _delCanFire = false; _delFlipAt = -1;
+    return ret(null, { phase: "idle" });
+  }
+
+  // roll=0°(基準姿勢)付近でのみ有効化
+  if (!_delCanFire) {
+    if (!isNeutral) return ret(null, { phase: "idle" });
+    _delCanFire = true;
+  }
+
+  if (isNeutral) {
+    if (_delFlipAt > 0) {
+      const held = now - _delFlipAt;
+      _delFlipAt = -1;
+      if (held < DEL_QUICK_MS) {
+        _delCanFire = false;
+        return ret("delete1", { isFlipped: false });
+      }
+    }
+    return ret(null, { phase: "armed" });
+  }
+
+  if (isFlipped) {
+    if (_delFlipAt < 0) _delFlipAt = now;
+    const held     = now - _delFlipAt;
+    const progress = Math.min(1, held / DEL_HOLD_MS);
+    if (held >= DEL_HOLD_MS) {
+      _delFlipAt = -1; _delCanFire = false;
+      return ret("deleteAll", { isFlipped: false });
+    }
+    return ret(null, { phase: "flipped", progress, flippedMs: held, isFlipped: true });
+  }
+
+  return ret(null, { phase: "armed" });
+}
+
+// --- 修飾ステートマシン (フリック後の濁点/半濁点サイクル) ---
+const MOD_ROLL_FLIP    = 60;
+const MOD_ROLL_NEUTRAL = 30;
+let _modOrigChar   = null;   // フリック直後の元の文字
+let _modState      = 0;      // 0=なし, 1=小文字, 2=濁点, 3=半濁点
+let _modBaseRoll   = 0;
+let _modIsFlipping = false;
+
+function cycleModifier() {
+  if (!_modOrigChar) return;
+  const o = $("jpFlickOutput");
+  if (!o || !o.value) return;
+  if (_modState === 0) {
+    if      (KOGAKI_MAP[_modOrigChar])     _modState = 1;
+    else if (DAKUTEN_MAP[_modOrigChar])    _modState = 2;
+    else if (HANDAKUTEN_MAP[_modOrigChar]) _modState = 3;
+    else return;
+  } else if (_modState === 1) {
+    if      (DAKUTEN_MAP[_modOrigChar])    _modState = 2;
+    else if (HANDAKUTEN_MAP[_modOrigChar]) _modState = 3;
+    else _modState = 0;
+  } else if (_modState === 2) {
+    if (HANDAKUTEN_MAP[_modOrigChar]) _modState = 3;
+    else _modState = 0;
+  } else {
+    _modState = 0;
+  }
+  const newChar = _modState === 0 ? _modOrigChar
+                : _modState === 1 ? KOGAKI_MAP[_modOrigChar]
+                : _modState === 2 ? DAKUTEN_MAP[_modOrigChar]
+                : HANDAKUTEN_MAP[_modOrigChar];
+  o.value = o.value.slice(0, -1) + newChar;
+}
+
+function updateModifier(roll) {
+  if (!_modOrigChar) return;
+  let d = roll - _modBaseRoll;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  if (!_modIsFlipping && Math.abs(d) > MOD_ROLL_FLIP) {
+    _modIsFlipping = true;
+    cycleModifier();
+  } else if (_modIsFlipping && Math.abs(d) < MOD_ROLL_NEUTRAL) {
+    _modIsFlipping = false;
+    _modBaseRoll = roll;
+  }
+}
+
+function resetModState() {
+  _modOrigChar = null; _modState = 0; _modBaseRoll = 0; _modIsFlipping = false;
+}
+
+function resetRowState() {
+  lockedRow = null; rowPending = null; flickStart = null; flickArmed = true; lastOpenPos = null;
+  leftMargin = false; centerFlipping = false; _lastDir = 0;
+  _delCanFire = false; _delFlipAt = -1;
+}
+
+function resetFull() {
+  resetRowState();
+  resetModState();
   _guuFrozenPos = null;
   _convMode = false; _convSegs = []; _convSegIdx = 0; _convOrigText = "";
 }
@@ -193,6 +406,372 @@ function updateJapanese(hand, now) {
       // ただし、このロック中に既にフリック/フリップで何か確定済み(flickArmed=false)の場合は
       // 「あ段」を二重に追加せず、単に終了(ロック解除)だけ行う
       if (hand.isFist) {
+        if (lockedRow === "、") {
+          // 句読点行グー = スペース兼変換キー (従来IMEのスペースと同じ挙動)
+          if (_convMode) { _convNext(); resetRowState(); return; }
+          if (flickArmed) {
+            const o = $("jpFlickOutput");
+            if (o && o.value) { _startConversion(); }
+            else { jpAppend("　"); jpStatus("全角スペース"); }
+          }
+          resetRowState(); return;
+        }
+        if (_convMode) { _convConfirm(); resetRowState(); return; }
+        if (flickArmed) {
+          const kana = ROWS[lockedRow][0];
+          jpAppend(kana);
+          jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[0], kana }));
+        } else {
+          jpStatus(t("jp.rowEnd", { row: lockedRow }));
+        }
+        resetRowState();
+        return;
+      }
+
+      // ポーズが変わった → HOLD_MS で新しい行へ切り替え (レスト不要)
+      // flickStart はパーからポーズへの遷移時のみ更新するためここでは変えない
+      if (row !== lockedRow) {
+        if (!row) { rowPending = null; jpStatus(t("jp.rowUnassigned", { row: lockedRow })); return; }
+        if (!rowPending || rowPending.row !== row) {
+          rowPending = { row, since: now };
+        } else if (now - rowPending.since >= HOLD_MS) {
+          lockedRow  = row;
+          rowPending = null;
+          flickArmed = false;   // 基準点へ戻るまでフリック判定を停止
+          jpStatus(t("jp.rowReturn", { row }));
+        } else { jpStatus(t("jp.rowPending", { row })); }
+        return;
+      }
+    }
+
+    // 同じ行: フリック / フリップ判定
+    rowPending = null;
+    if (!flickStart) flickStart = hand.palmPoint;
+
+    const cur = hand.palmPoint;
+    const dx = cur.x - flickStart.x, dy = cur.y - flickStart.y;
+    const d   = Math.hypot(dx, dy);
+    const dir = flickDir(dx, dy);
+    if (d >= FLICK_DIST) leftMargin = true;
+
+    if (!flickArmed) {
+      // マージン外: ヒステリシス付きで方向変化を検出し、境界を越えたら追加入力
+      if (d >= FLICK_DIST) {
+        const hystDir = flickDirHyst(dx, dy, _lastDir);
+        if (hystDir !== 0 && hystDir !== _lastDir) {
+          const kana = ROWS[lockedRow][hystDir];
+          jpAppend(kana);
+          jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[hystDir], kana }));
+          _modOrigChar = kana; _modState = 0;
+          _modBaseRoll = hand.orientation.roll; _modIsFlipping = false;
+          _lastDir = hystDir;
+        }
+      }
+      // グー(削除ジェスチャー)とは手の形で区別する: 指を伸ばしたままの捻りのみ濁点サイクルとして扱う
+      if (!hand.isFist) updateModifier(hand.orientation.roll);
+      // 中央フリップでの確定は手を動かさないため、一度 FLICK_DIST の外に出て
+      // 戻ってくるまでは再アームしない (でないと濁点フリップの前に即再アームしてしまう)
+      if (leftMargin && d < FLICK_DIST) {
+        flickArmed = true; leftMargin = false; resetModState(); _lastDir = 0;
+        centerBaseRoll = hand.orientation.roll; centerFlipping = false;
+      }
+      const modLabel = _modState === 1 ? t("jp.modSmall") : _modState === 2 ? t("jp.modDaku") : _modState === 3 ? t("jp.modHandaku") : "";
+      jpStatus(t("jp.reflick", { row: lockedRow, mod: modLabel }));
+      return;
+    }
+
+    // フリック受付中: 動かせば方向を即確定
+    if (dir !== 0) {
+      const kana = ROWS[lockedRow][dir];
+      jpAppend(kana);
+      jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[dir], kana }));
+      _modOrigChar = kana; _modState = 0;
+      _modBaseRoll = hand.orientation.roll; _modIsFlipping = false;
+      _lastDir = dir;
+      flickArmed = false;
+      return;
+    }
+
+    // 中央 (未フリック): 手首をひねる(フリップ)であ段を確定
+    {
+      const roll = hand.orientation.roll;
+      const rd = angleDelta(roll, centerBaseRoll);
+      if (!centerFlipping && Math.abs(rd) > MOD_ROLL_FLIP) {
+        centerFlipping = true;
+        if (lockedRow === "わ") {
+          // わ行フリップ = 全角スペース (かな入力のみ・変換機能なし)
+          jpAppend("　"); jpStatus(t("jp.fullSpace"));
+          flickArmed = false; return;
+        }
+        const base = ROWS[lockedRow][0];
+        // 濁点があれば素の文字を経由せず、確定と同時に濁点形から始める
+        const hasDaku = !!DAKUTEN_MAP[base];
+        const kana = hasDaku ? DAKUTEN_MAP[base] : base;
+        jpAppend(kana);
+        jpStatus(t("jp.commit", { row: lockedRow, dir: dirLabels()[0], kana }));
+        // 確定に使ったこのフリップ自体を「1回目」として消費済み扱いにし、
+        // 次にニュートラルへ戻ってからのフリップでさらにサイクルさせる
+        _modOrigChar = base; _modState = hasDaku ? 2 : 0;
+        _modBaseRoll = centerBaseRoll; _modIsFlipping = true;
+        flickArmed = false;
+        return;
+      } else if (centerFlipping && Math.abs(rd) < MOD_ROLL_NEUTRAL) {
+        centerFlipping = false; centerBaseRoll = roll;
+      }
+    }
+    if (lockedRow === "わ") {
+      jpStatus(t("jp.waHint"));
+    } else {
+      jpStatus(t("jp.rowHint", { row: lockedRow }));
+    }
+    return;
+  }
+
+  // ---- 非ロック ----
+  if (isRest) {
+    rowPending = null;
+    if (hand.isOpen) lastOpenPos = hand.palmPoint;
+    jpStatus(hand.fingers.pinky ? t("jp.restPinky") : t("jp.restBase"));
+    return;
+  }
+
+  // ---- 中間状態: 行選択 ----
+  if (!row) { rowPending = null; jpStatus(t("jp.unassigned")); return; }
+  if (!rowPending || rowPending.row !== row) {
+    rowPending = { row, since: now };
+  } else if (now - rowPending.since >= HOLD_MS) {
+    lockedRow  = row;
+    flickStart = lastOpenPos ?? hand.palmPoint;
+    rowPending = null; flickArmed = true; leftMargin = false;
+    resetModState();
+    centerBaseRoll = hand.orientation.roll; centerFlipping = false;
+    jpStatus(t("jp.rowHint", { row }));
+  } else { jpStatus(t("jp.rowPending", { row })); }
+}
+
+export default {
+  id: "japanese",
+  label: "日本語",
+  reset() { resetFull(); const dbg = $("orientDebug"); if (dbg) dbg.style.display = "none"; },
+  onFrame(ctx) {
+    const { now, langInfo, orient, hand, gesture, octx } = ctx;
+    // JP専用削除: フリップ即戻し→1文字, 保持→全削除
+    // (行ロック中は centerBaseRoll = このセッションの真のニュートラル角度をヒントとして渡す)
+    const del = updateDelete(hand, now);
+    if (del.action === "delete1")        { jpFlickBackspace(); jpStatus(t("jp.delOne")); }
+    else if (del.action === "deleteAll") { jpFlickClear(); }
+    if (hand.isFist) {
+      const roll = hand.orientation.roll;
+      if (del.phase === "flipped") {
+        const remaining = Math.max(0, Math.round(DEL_QUICK_MS - del.flippedMs));
+        jpStatus(t("jp.delFlip", { roll: roll.toFixed(0), ms: remaining, pct: Math.round(del.progress * 100) }));
+      } else if (del.phase === "armed") {
+        jpStatus(t("jp.delArmed", { roll: roll.toFixed(0) }));
+      } else {
+        jpStatus(t("jp.delFist", { roll: roll.toFixed(0) }));
+      }
+    }
+    if (hand.isFist) {
+      if (!_guuFrozenPos) _guuFrozenPos = flickStart ?? lastOpenPos ?? null;
+    } else {
+      _guuFrozenPos = null;
+    }
+    { const _pc = $("padCursor");
+      const _cp = _guuFrozenPos ?? hand.palmPoint;
+      drawPadCursor(_cp.x * (_pc?.width ?? 1), _cp.y * (_pc?.height ?? 1), "point"); }
+    // 赤フラッシュ: drawPadCursor が clearRect してから描くため、必ずその後に重ねる
+    if (hand.isFist && del.isFlipped) {
+      const pc = $("padCursor");
+      if (pc) {
+        const pg = pc.getContext("2d");
+        pg.save();
+        pg.fillStyle = "rgba(255,50,50,0.45)";
+        pg.fillRect(0, 0, pc.width, pc.height);
+        pg.restore();
+      }
+    }
+    // デバッグ: 手に追従するローカル座標軸をoverlayに描画
+    if (octx) {
+      const lm = hand.lm;
+      const o  = hand.orientation;
+      const W  = octx.canvas.width, H = octx.canvas.height;
+
+      // 手のひら中心 (canvas座標)
+      const cx = (lm[LM.WRIST].x + lm[LM.INDEX_MCP].x + lm[LM.PINKY_MCP].x) / 3 * W;
+      const cy = (lm[LM.WRIST].y + lm[LM.INDEX_MCP].y + lm[LM.PINKY_MCP].y) / 3 * H;
+
+      // hand-state.js で計算済みのボディ固定フレームを再利用
+      const { fx, fy, fz } = hand.bodyFrame;
+
+      const L = 50;
+      const drawArrow = (g, ax, ay, bx, by, color) => {
+        const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+        if (len < 1) return;
+        const nx = dx / len, ny = dy / len;
+        g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        g.beginPath();
+        g.moveTo(bx, by);
+        g.lineTo(bx - nx*9 + ny*4, by - ny*9 - nx*4);
+        g.lineTo(bx - nx*9 - ny*4, by - ny*9 + nx*4);
+        g.closePath(); g.fill();
+      };
+      const drawText = (g, text, canvasX, canvasY, color) => {
+        g.save();
+        g.translate(canvasX, canvasY); g.scale(-1, 1); g.textAlign = "center";
+        g.font = "bold 11px monospace";
+        g.lineWidth = 3; g.strokeStyle = "#000"; g.strokeText(text, 0, 0);
+        g.fillStyle = color; g.fillText(text, 0, 0);
+        g.restore();
+      };
+
+      // 参照ランドマークを色付き点で表示
+      const dot = (g, idx, color) => {
+        const x = lm[idx].x * W, y = lm[idx].y * H;
+        g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2);
+        g.fillStyle = color; g.fill();
+        g.strokeStyle = "#000"; g.lineWidth = 1.5; g.stroke();
+      };
+      octx.save();
+      // fz (Z軸=青): WRIST → MIDDLE_MCP
+      dot(octx, LM.WRIST,      "#4488ff");
+      dot(octx, LM.MIDDLE_MCP, "#4488ff");
+      // fx (X軸=赤): INDEX_MCP ↔ PINKY_MCP
+      dot(octx, LM.INDEX_MCP,  "#ff4444");
+      dot(octx, LM.PINKY_MCP,  "#ff4444");
+
+      // 3Dベクトルをcanvas 2Dに投影 (x,yのみ使用、orthographic)
+      // 赤: X軸 (横方向)
+      drawArrow(octx, cx, cy, cx + fx[0]*L, cy + fx[1]*L, "#ff4444");
+      drawText(octx, "X", cx + fx[0]*L, cy + fx[1]*L - 8, "#ff6666");
+      // 緑: Y軸 (手のひら法線)
+      drawArrow(octx, cx, cy, cx + fy[0]*L, cy + fy[1]*L, "#00ff44");
+      drawText(octx, "Y", cx + fy[0]*L, cy + fy[1]*L - 8, "#00ff44");
+      // 青: Z軸 (指方向)
+      drawArrow(octx, cx, cy, cx + fz[0]*L, cy + fz[1]*L, "#4488ff");
+      drawText(octx, "Z", cx + fz[0]*L, cy + fz[1]*L - 8, "#88aaff");
+
+      // 角度値をpalm下に縦並び (色 = 対応する回転軸の色)
+      // Roll=Z軸(青)周り, Pitch=X軸(赤)周り, Yaw=Y軸(緑)周り
+      const lx = cx, ly = cy + L + 16;
+      drawText(octx, `R:${o.roll.toFixed(0)}°`,   lx, ly,      "#4488ff"); // Z=青
+      drawText(octx, `P:${o.pitch.toFixed(0)}°`,  lx, ly + 14, "#ff4444"); // X=赤
+      drawText(octx, `Y:${o.yaw.toFixed(0)}°`,    lx, ly + 28, "#00ff44"); // Y=緑
+      drawText(octx, `key:${extendedKey(hand)||"–"}`, lx, ly + 42, "#ffff00");
+
+      octx.restore();
+    }
+    // updateJapanese が resetRowState() で lockedRow / flickStart を null にする前に保存する
+    const _visRow = lockedRow;
+    const _visRef = flickStart ?? (hand.isFist ? _guuFrozenPos : null);
+    updateJapanese(hand, now);
+    // flickStart (基準点) の可視化: マージン円 + X字仕切り + 現在位置への線
+    // グー中は _guuFrozenPos にフォールバック (resetRowState 後も表示を維持)
+    if ((_visRow || (hand.isFist && _guuFrozenPos)) && _visRef) {
+      const el = $("padCursor");
+      if (el) {
+        const g = el.getContext("2d");
+        const px = _visRef.x * el.width,  py = _visRef.y * el.height;
+        const cx = (hand.isFist ? _guuFrozenPos ?? hand.palmPoint : hand.palmPoint).x * el.width,
+              cy = (hand.isFist ? _guuFrozenPos ?? hand.palmPoint : hand.palmPoint).y * el.height;
+        const r  = FLICK_DIST * el.width;
+        const ready = flickArmed;
+        const rimColor = ready ? "#00cc44" : "#ff8800";
+
+        g.save();
+
+        // 現在位置 → 基準点への線
+        g.strokeStyle = "rgba(255,255,255,0.3)";
+        g.lineWidth = 1;
+        g.beginPath(); g.moveTo(cx, cy); g.lineTo(px, py); g.stroke();
+
+        // X字仕切り (マージン外まで伸ばす)
+        const ext = r * 2;
+        g.strokeStyle = rimColor;
+        g.lineWidth = 2;
+        g.globalAlpha = 0.4;
+        g.beginPath();
+        g.moveTo(px - ext, py - ext); g.lineTo(px + ext, py + ext);
+        g.moveTo(px + ext, py - ext); g.lineTo(px - ext, py + ext);
+        g.stroke();
+        g.globalAlpha = 1.0;
+
+        // マージン円
+        g.strokeStyle = rimColor;
+        g.lineWidth = 2;
+        g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.stroke();
+
+        // 基準点ドット
+        g.fillStyle = rimColor;
+        g.beginPath(); g.arc(px, py, 5, 0, Math.PI * 2); g.fill();
+
+        // 修飾状態バッジ (゛/゜) - フリック後のモディファイア状態
+        if (_modState > 0) {
+          const mark  = _modState === 2 ? "゛" : "゜";
+          const color = _modState === 2 ? "#5bff8c" : "#5b8cff";
+          g.font = "bold 36px system-ui";
+          g.textAlign = "center";
+          g.textBaseline = "bottom";
+          g.shadowColor = "rgba(0,0,0,0.9)";
+          g.shadowBlur = 8;
+          g.fillStyle = color;
+          g.fillText(mark, px, py - r - 4);
+          g.shadowBlur = 0;
+        }
+
+        // 各フリック方向の文字をマージン外周に表示 (_visRow が null = グー確定直後はスキップ)
+        if (_visRow) {
+          const kana = ROWS[_visRow];
+          const labelR = r * 1.75;
+          // 現在の手の位置から向き方向を算出してハイライト
+          const adx = hand.palmPoint.x - _visRef.x;
+          const ady = hand.palmPoint.y - _visRef.y;
+          const activeDir = flickDir(adx, ady);
+          const labelPositions = [
+            { dx: 0,       dy: 0,       idx: 0 },
+            { dx: -labelR, dy: 0,       idx: 1 },
+            { dx: 0,       dy: -labelR, idx: 2 },
+            { dx: labelR,  dy: 0,       idx: 3 },
+            { dx: 0,       dy: labelR,  idx: 4 },
+          ];
+          g.font = "bold 26px system-ui";
+          g.textAlign = "center";
+          g.textBaseline = "middle";
+          for (const { dx, dy, idx } of labelPositions) {
+            const k = kana[idx];
+            if (!k || k === "　") continue;
+            const tx = px + dx, ty = py + dy;
+            const isActive = flickArmed && activeDir === idx && idx !== 0;
+            g.lineWidth = 5;
+            g.strokeStyle = "rgba(0,0,0,0.85)";
+            g.strokeText(k, tx, ty);
+            g.fillStyle = isActive ? "#ffd15b"
+              : flickArmed ? "#ffffff" : "rgba(255,255,255,0.55)";
+            g.fillText(k, tx, ty);
+          }
+        }
+
+        g.restore();
+      }
+    }
+    setGesture(langInfo.fired ? `-> ${langInfo.label}` : t("mode.japanese"));
+    if (!applyLangCamState(langInfo)) {
+      setCameraState("detecting", t("cam.modeLabel", { label: t("mode.japanese") }), t("jp.camDetail"));
+    }
+  },
+};
+
+// =====================================================================
+//  設定UI: しきい値スライダ + 運指テーブル表示
+// =====================================================================
+export function renderJapaneseSettings() {
+  const root = $("jpFingerConfig");
+  if (!root) return;
+  root.innerHTML = "";
+
+  const thTitle = document.createElement("div");
+  thTitle.className = "jp-cfg-title"; thTitle.textContent = t("jp.cfgThresholds");
+  root.appendChild(thTitle);
   root.appendChild(makeSlider("フリック距離", 0.02, 1.00, 0.01, FLICK_DIST, (v) => { FLICK_DIST = v; }));
 
   const mapTitle = document.createElement("div");
