@@ -47,27 +47,32 @@ class EmojiSearcher:
         self,
         index_path: str | Path,
         metadata_path: str | Path,
-        model_name: str = DEFAULT_MODEL,
+        model_name: str | None = None,
     ) -> None:
         index_path = Path(index_path)
         self.index = load_index(index_path)
         with open(metadata_path, encoding="utf-8") as f:
             self.metadata = [json.loads(line) for line in f]
-        self.encoder = ClipEncoder(model_name)
-        self.preprocess = self._resolve_query_preprocess(index_path)
+        meta = self._read_index_meta(index_path)
+        # index を作ったモデルと同じモデルで query を埋め込む (次元・埋め込み空間を一致させる)。
+        # 明示指定があればそれを優先し、無ければ index_meta の model_id、最後に既定。
+        self.encoder = ClipEncoder(model_name or meta.get("model_id") or DEFAULT_MODEL)
+        self.preprocess = self._resolve_query_preprocess(meta.get("preprocess", "rgba_on_white"))
 
     @staticmethod
-    def _resolve_query_preprocess(index_path: Path):
-        """index_meta.json の preprocess に対応する query 前処理を返す。
+    def _read_index_meta(index_path: Path) -> dict:
+        meta_path = index_path.with_name("index_meta.json")
+        if meta_path.exists():
+            return json.loads(meta_path.read_text(encoding="utf-8"))
+        return {}
+
+    @staticmethod
+    def _resolve_query_preprocess(label: str):
+        """index_meta.json の preprocess ラベルに対応する query 前処理を返す。
 
         - 対応表に無いラベル -> 即 ValueError (index と query のドメイン不一致を未然に防ぐ)。
-        - index_meta.json が無い -> 従来挙動 (rgba_on_white) にフォールバック。
+        - index_meta.json が無い場合は呼び出し側が既定 (rgba_on_white) を渡す。
         """
-        meta_path = index_path.with_name("index_meta.json")
-        label = "rgba_on_white"
-        if meta_path.exists():
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            label = meta.get("preprocess", label)
         if label not in QUERY_PREPROCESS:
             raise ValueError(
                 f"index の preprocess='{label}' に対応する query 前処理が未実装です。"

@@ -5,6 +5,7 @@
 import { setGesture, setCameraState, drawPadCursor, setFlash,
   getPadCtx, clearPad, searchImage, applyLangCamState,
 } from "../core.js";
+import { t } from "../i18n.js";
 
 let penDown = false;
 
@@ -38,31 +39,32 @@ export default {
     }
 
     // 共通ジェスチャー: 決定=検索, 削除=クリア
+    // 評価モード中は検索でなく「この絵で確定」(お題の記録) にフォークする。
     if (gesture.fired === "confirm") {
-      searchImage("camera");
-      setFlash("検索", now + 500);
+      if (window.__evalActive) window.__evalSubmit(); else searchImage("camera");
+      setFlash(t("emoji.fSubmit"), now + 500);
     } else if (gesture.fired === "delete") {
       clearPad();
-      setFlash("クリア", now + 500);
+      setFlash(t("emoji.fClear"), now + 500);
     }
 
     // ジェスチャー表示
     if (langInfo.fired) {
       setGesture(`-> ${langInfo.label}`);
     } else {
-      setGesture(drawMode === "draw" ? "Drawing" : "—");
+      setGesture(drawMode === "draw" ? t("emoji.gDraw") : t("emoji.gIdle"));
     }
 
     if (applyLangCamState(langInfo)) {
       // 言語切替優先
     } else if (gesture.fired === "confirm") {
-      setCameraState("searching", "検索実行中", "検索結果を待っています");
+      setCameraState("searching", t("emoji.cSearchRun"), t("emoji.cSearchWait"));
     } else if (gesture.fired === "delete") {
-      setCameraState("detecting", "クリアしました", "次のジェスチャを待っています");
+      setCameraState("detecting", t("emoji.cCleared"), t("cam.waitNext"));
     } else if (drawMode === "draw") {
-      setCameraState("drawing", "描画中", "人差し指を折ると描画を止めます");
+      setCameraState("drawing", t("emoji.cDrawing"), t("emoji.cDrawDetail"));
     } else {
-      setCameraState("detecting", "検出中", "人差し指のみ=描画 / グーパーグー=検索 / グーフリップ=クリア");
+      setCameraState("detecting", t("cam.detecting"), t("cam.emojiModeDetail"));
     }
   },
 };

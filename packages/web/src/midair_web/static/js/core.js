@@ -15,6 +15,7 @@ import emoji from "./modes/emoji.js";
 import japanese, { jpFlickBackspace, jpFlickClear, renderJapaneseSettings } from "./modes/japanese.js";
 import english, { enBackspace, enClear, renderEnglishSettings } from "./modes/english.js";
 import { testToggle, testNext, initTest, refreshTest } from "./test.js";
+import { startEval, stopEval, evalClearLog, initEval, applyEmojiLayout, toggleEvalMode, applyEvalI18n } from "./eval.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -232,14 +233,35 @@ async function runJob(url, body, source = "manual") {
   }
 }
 
+// ページ内で選んだ検索モデル (key)。null=既定。全検索リクエストに載せる。
+let currentModel = null;
+export function setSearchModel(key) { currentModel = key; }
+
 export function searchText() {
   const q = $("q").value.trim();
   if (!q) { setStatus(t("status.needText")); return; }
-  runJob("/api/search/text", { query: q, top_k: effectiveTopK() });
+  runJob("/api/search/text", { query: q, top_k: effectiveTopK(), model: currentModel });
 }
 export function searchImage(source = "manual") {
   const dataUrl = canvas.toDataURL("image/png");
-  runJob("/api/search/image", { image: dataUrl, top_k: effectiveTopK() }, source);
+  runJob("/api/search/image", { image: dataUrl, top_k: effectiveTopK(), model: currentModel }, source);
+}
+
+// 精度評価用: 現在の手書き画像で検索し、{results, searchMs(サーバ計測の検索実時間)} を返す。
+// runJob と違い top-1 自動入力/グリッド描画はしない (評価側が順位・速度を測れるよう生で渡す)。
+export async function searchImageRaw(topKN) {
+  const dataUrl = canvas.toDataURL("image/png");
+  const res = await fetch("/api/search/image", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: dataUrl, top_k: topKN, model: currentModel }),
+  });
+  const { job_id } = await res.json();
+  while (true) {
+    await sleep(300);
+    const job = await (await fetch(`/api/jobs/${job_id}`)).json();
+    if (job.status === "done") return { results: job.results, searchMs: job.elapsed_ms };
+    if (job.status === "error") throw new Error(job.error);
+  }
 }
 
 // =====================================================================
@@ -266,12 +288,7 @@ export function setInputMode(mode) {
   const status = $("jpFlickStatus");
   if (status) status.textContent = t("guide." + mode);        // 入力方法ガイド (モード連動)
   applyViewLayout();   // 運指設定/入力欄の表示は testMode と mode に応じて決める
-  const resultSetting = $("resultSettingPanel");
-  if (resultSetting) resultSetting.style.display = (mode === "emoji") ? "" : "none";
-  const drawActions = $("drawActions");
-  if (drawActions) drawActions.style.display = (mode === "emoji") ? "" : "none";
-  const textSearch = $("textSearchPanel");
-  if (textSearch) textSearch.style.display = (mode === "emoji") ? "" : "none";
+  applyEmojiLayout(mode === "emoji");   // 絵文字時の検索/評価パネルの出し分けは eval.js に集約
   if (!mpRunning) {
     const ml = t("mode." + current.id);
     setGesture("—");
@@ -300,6 +317,7 @@ export function cycleInputMode() {
 //   確定したら cycleInputMode() で 日本語→英語→絵文字 を巡回する。
 // =====================================================================
 let langMethod = "flip";       // "off" | "holdback" | "flip"
+let langMethodSaved = null;    // 評価モード中に langMethod を退避しておく場所
 let orientInverted = false;    // 手のひら/甲の判定が逆な環境向け
 let curOrient = "unknown";     // "palm" | "back" | "unknown"
 let backHoldStart = 0, langArmed = true, langLastFire = 0;
@@ -374,6 +392,21 @@ export function applyLangCamState(langInfo) {
 // UI ハンドラ (インライン属性から呼ぶため window に載せる)
 export function onLangMethodChange(v) { langMethod = v; backHoldStart = 0; langArmed = true; _langFlipArmed = false; _langBackAt = -1; _langPrevOrient = "unknown"; }
 export function setOrientInvert(v) { orientInverted = v; }
+
+// 手首フリック(手のひら⇄甲)による言語切替の有効/無効を切り替える。
+// 評価モード中は無効化して、抜けたら元の方式に戻す (eval.js から呼ばれる)。
+export function setLangSwitchEnabled(enabled) {
+  if (!enabled) {
+    if (langMethodSaved === null) langMethodSaved = langMethod;   // 現在の方式を退避
+    langMethod = "off";
+  } else if (langMethodSaved !== null) {
+    langMethod = langMethodSaved;                                 // 退避した方式に復帰
+    langMethodSaved = null;
+  }
+  const sel = $("langMethodSel");
+  if (sel) sel.disabled = !enabled;   // 評価中はセレクトも操作不可にする (状態を明示)
+  resetLangState();
+}
 export function setFilterParams(minCutoff, beta) {
   landmarkSmoother.updateParams({ minCutoff, beta });
   landmarkSmoother.reset();
@@ -582,9 +615,13 @@ export function applyLang() {
   if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = getLang();
   applyStaticI18n();                              // data-i18n を持つ静的要素
   const lt = $("langToggle"); if (lt) lt.textContent = t("lang.toggle");
+  // カメラ開始/停止ボタンは稼働状態に依存する動的ラベル。applyStaticI18n は
+  // data-i18n="btn.camStart" で無条件に「開始」へ戻すため、稼働中は上書きし直す。
+  const cb = $("camBtn"); if (cb) cb.textContent = t(mpRunning ? "btn.camStop" : "btn.camStart");
   renderJapaneseSettings();                       // 運指/しきい値エディタ (t() で組み立て)
   renderEnglishSettings();
   refreshTest();                                  // テストお題/統計ラベル
+  applyEvalI18n();                                // 精度評価パネル/集計テーブルを現在言語で再描画
   setInputMode(inputMode);                        // ガイド/モードラベル/カメラ待機表示
 }
 export function toggleLang() { setLang(getLang() === "en" ? "ja" : "en"); applyLang(); }
@@ -594,6 +631,7 @@ function init() {
   updateResultModeUI();   // 既定 top-k なので top-k 行を表示
   initTest();             // 入力テストの初期お題
   applyLang();            // 言語適用込みで 運指設定/ガイド/モードUI/テスト を構築 (renderXSettings 等を内包)
+  initEval();             // 精度評価: 既存ログ描画 + window.__evalSubmit 公開
   $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") searchText(); });
 
   // index.html の onclick="..." から呼べるよう window に載せる
@@ -603,6 +641,7 @@ function init() {
     jpFlickClear:     () => { (inputMode === "english" ? enClear     : jpFlickClear    )(); refreshCharHighlight(); },
     onLangMethodChange, setOrientInvert, updateResultModeUI,
     testToggle, testNext, toggleView, toggleLang, setFilterParams,
+    startEval, stopEval, evalClearLog, toggleEvalMode,   // 精度評価パネルのボタン
   });
   refreshCharHighlight();
 }
