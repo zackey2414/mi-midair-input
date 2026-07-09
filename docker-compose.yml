@@ -21,6 +21,7 @@ services:
       # フロントはホストから bind-mount (編集を再ビルド無しで反映)
       - ./packages/web/src/midair_web/static/js:/app/packages/web/src/midair_web/static/js
       - ./packages/web/src/midair_web/static/index.html:/app/packages/web/src/midair_web/static/index.html
+      - ./packages/web/src/midair_web/static/game.html:/app/packages/web/src/midair_web/static/game.html
     environment:
       # 3 モデルを登録 (先頭が既定)。表示画像は base の /app/data から配信。
       # 未取得のモデルは評価パネルで選んだとき初めてエラーになる (既定 b32 は動く)。
