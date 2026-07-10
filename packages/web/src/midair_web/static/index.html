@@ -292,7 +292,7 @@
   <h1>Mid-Air Flick &amp; Drawing Input</h1>
   <div style="display:flex;gap:7px;align-items:center">
     <a href="/game" class="view-toggle" style="color:var(--fg);text-decoration:none;font-size:13px;font-weight:600">Game Mode →</a>
-    <button id="langToggle" class="view-toggle" onclick="toggleLang()">EN</button>
+    <button id="langToggle" class="view-toggle" onclick="toggleLang()" style="display:none">EN</button>
   </div>
 </header>
 
@@ -385,6 +385,10 @@
       <div class="row" id="topkRow">
         <label class="k">top-k</label>
         <input id="topk" type="text" value="30" style="width:46px" />
+      </div>
+      <div class="row" id="modelRow" style="display:none">
+        <label class="k" data-i18n="eval.model">モデル</label>
+        <select id="mainModelSel" style="flex:1"></select>
       </div>
     </div>
     <div class="panel" id="evalPanel" style="display:none">

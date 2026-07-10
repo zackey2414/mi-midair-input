@@ -267,21 +267,37 @@ export function applyEvalI18n() {
 
 // /api/models からモデル一覧を取ってセレクトに反映し、選択を検索モデルに反映する。
 async function initModelSelect() {
-  const sel = $("evalModel");
-  if (!sel) return;
+  const evalSel = $("evalModel");
+  const mainSel = $("mainModelSel");
+  const mainRow = $("modelRow");
+  if (!evalSel && !mainSel) return;
   try {
     const data = await (await fetch("/api/models")).json();
     models = data.models || [];
-    sel.innerHTML = "";
-    for (const m of models) {
-      const o = document.createElement("option");
-      o.value = m.key;
-      o.textContent = `${m.label} (${m.dim}d)`;
-      sel.appendChild(o);
-    }
-    sel.value = data.default;
-    applyModel(sel.value);
-    sel.onchange = () => applyModel(sel.value);
+    const populate = (sel) => {
+      if (!sel) return;
+      sel.innerHTML = "";
+      for (const m of models) {
+        const o = document.createElement("option");
+        o.value = m.key;
+        o.textContent = m.dim ? `${m.label} (${m.dim}d)` : m.label;
+        sel.appendChild(o);
+      }
+      sel.value = data.default;
+    };
+    populate(evalSel);
+    populate(mainSel);
+    // 2つのセレクトを同期: どちらを変えてももう一方と検索モデルに反映
+    const onChange = (key) => {
+      applyModel(key);
+      if (evalSel && evalSel.value !== key) evalSel.value = key;
+      if (mainSel && mainSel.value !== key) mainSel.value = key;
+    };
+    if (evalSel) evalSel.onchange = () => onChange(evalSel.value);
+    if (mainSel) mainSel.onchange = () => onChange(mainSel.value);
+    // モデルが2種以上あるときだけメインパネルのセレクトを表示する
+    if (mainRow) mainRow.style.display = models.length >= 2 ? "" : "none";
+    applyModel(data.default);
   } catch (e) { /* モデル一覧が取れなければ既定モデルのまま検索 */ }
 }
 function applyModel(key) {
