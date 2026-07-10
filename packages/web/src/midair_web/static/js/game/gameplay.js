@@ -9,7 +9,7 @@
 //   #jpFlickOutput はフリック入力エンジンが直接追記/削除する実体で、見た目には出さない。
 //   代わりに #gameTypedDisplay に「打った文字全部」を、正解に寄与した文字と外れた文字を
 //   色分けして表示し、#gameTarget 側もどこまで進んだかを色分けする。
-import { pickRandomWord } from "./wordlists.js";
+import { getWordList } from "./wordlists.js";
 import { setInputMode, startCam } from "../core.js";
 import { setLang } from "../i18n.js";
 
@@ -28,6 +28,7 @@ let mode = "japanese";     // "japanese" | "english" | "both"
 let duration = 30;         // 秒
 
 // --- 実行時状態 ---
+let wordIndex = 0;     // 固定順リストの現在位置。startGame でリセット
 let running = false;
 let rafId = 0;
 let startAt = 0, endAt = 0;
@@ -74,7 +75,9 @@ function flashCombo(text) {
 
 function nextWord() {
   const lang = pickLang();
-  const w = pickRandomWord(lang, currentWord?.text ?? null);
+  const list = getWordList(lang);
+  const w = list[wordIndex % list.length];
+  wordIndex++;
   currentWord = { ...w, lang };
   setInputMode(lang);   // そのモードの運指エンジン内部状態もリセットされる
   const o = $("jpFlickOutput");
@@ -185,6 +188,7 @@ function tick() {
 }
 
 function startGame() {
+  wordIndex = 0;
   stats = { words: 0, miss: 0, inputs: 0 };
   running = true;
   startAt = performance.now();

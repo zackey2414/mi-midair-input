@@ -3,7 +3,7 @@
 // 日常語のみを手動収録した固定リストを既定ソースとする。
 //
 // 差し替え設計:
-//   gameplay.js は本ファイルの getWordList(lang) / pickRandomWord(lang, ...) しか呼ばない。
+//   gameplay.js は本ファイルの getWordList(lang) しか呼ばない (固定順)。
 //   将来 辞書API・頻度リスト等に差し替える場合は WORD_SOURCES の該当エントリ
 //   (関数) を差し替えるだけでよく、gameplay.js 側の変更は不要。
 //
@@ -12,38 +12,34 @@
 //         カタカナ語は運指表に無いため対象外)
 //   hint: 参考表示 (JPは漢字表記、ENは未使用)
 
+// デモ用固定順リスト (3文字以上、ゲーム開始のたびに先頭から同じ順で出題)。
+// カテゴリが偏らないよう動物・食・人・形容詞・モノをインターリーブ済み。
+// 事前練習 → 本番で同じ順序を体験できる。
 const JAPANESE_WORDS = [
-  { text: "ねこ", hint: "猫" }, { text: "いぬ", hint: "犬" }, { text: "とり", hint: "鳥" },
-  { text: "さかな", hint: "魚" }, { text: "うさぎ", hint: "兎" }, { text: "ぞう", hint: "象" },
-  { text: "くま", hint: "熊" }, { text: "うま", hint: "馬" }, { text: "ひつじ", hint: "羊" },
-  { text: "きつね", hint: "狐" }, { text: "はな", hint: "花" }, { text: "くさ", hint: "草" },
-  { text: "き", hint: "木" }, { text: "もり", hint: "森" }, { text: "やま", hint: "山" },
-  { text: "かわ", hint: "川" }, { text: "うみ", hint: "海" }, { text: "そら", hint: "空" },
-  { text: "くも", hint: "雲" }, { text: "ほし", hint: "星" }, { text: "つき", hint: "月" },
-  { text: "あめ", hint: "雨" }, { text: "ゆき", hint: "雪" }, { text: "かぜ", hint: "風" },
-  { text: "なつ", hint: "夏" }, { text: "ふゆ", hint: "冬" }, { text: "はる", hint: "春" },
-  { text: "あき", hint: "秋" }, { text: "あさ", hint: "朝" }, { text: "ひる", hint: "昼" },
-  { text: "よる", hint: "夜" }, { text: "きのう", hint: "昨日" }, { text: "きょう", hint: "今日" },
-  { text: "あした", hint: "明日" }, { text: "とけい", hint: "時計" }, { text: "でんわ", hint: "電話" },
-  { text: "てがみ", hint: "手紙" }, { text: "ほん", hint: "本" }, { text: "かさ", hint: "傘" },
-  { text: "くつ", hint: "靴" }, { text: "ふく", hint: "服" }, { text: "めがね", hint: "眼鏡" },
-  { text: "かばん", hint: "鞄" }, { text: "さいふ", hint: "財布" }, { text: "つくえ", hint: "机" },
-  { text: "いす", hint: "椅子" }, { text: "まど", hint: "窓" }, { text: "かぎ", hint: "鍵" },
-  { text: "はこ", hint: "箱" }, { text: "たまご", hint: "卵" }, { text: "みず", hint: "水" },
-  { text: "おちゃ", hint: "お茶" }, { text: "ごはん", hint: "ご飯" }, { text: "やさい", hint: "野菜" },
-  { text: "くだもの", hint: "果物" }, { text: "にく", hint: "肉" }, { text: "たまねぎ", hint: "玉葱" },
-  { text: "じかん", hint: "時間" }, { text: "がっこう", hint: "学校" }, { text: "せんせい", hint: "先生" },
-  { text: "がくせい", hint: "学生" }, { text: "ともだち", hint: "友達" }, { text: "かぞく", hint: "家族" },
-  { text: "あね", hint: "姉" }, { text: "あに", hint: "兄" }, { text: "いもうと", hint: "妹" },
-  { text: "おとうと", hint: "弟" }, { text: "ちち", hint: "父" }, { text: "はは", hint: "母" },
-  { text: "あたま", hint: "頭" }, { text: "かお", hint: "顔" }, { text: "め", hint: "目" },
-  { text: "みみ", hint: "耳" }, { text: "くち", hint: "口" }, { text: "て", hint: "手" },
-  { text: "あし", hint: "足" }, { text: "からだ", hint: "体" }, { text: "こころ", hint: "心" },
-  { text: "いろ", hint: "色" }, { text: "あか", hint: "赤" }, { text: "あお", hint: "青" },
-  { text: "しろ", hint: "白" }, { text: "くろ", hint: "黒" }, { text: "きいろ", hint: "黄色" },
-  { text: "おおきい", hint: "大きい" }, { text: "ちいさい", hint: "小さい" }, { text: "はやい", hint: "早い" },
-  { text: "おそい", hint: "遅い" }, { text: "たかい", hint: "高い" }, { text: "やすい", hint: "安い" },
-  { text: "あたらしい", hint: "新しい" }, { text: "ふるい", hint: "古い" },
+  { text: "さかな",     hint: "魚"    },  // 動物
+  { text: "たまご",     hint: "卵"    },  // 食
+  { text: "ともだち",   hint: "友達"  },  // 人
+  { text: "はやい",     hint: "早い"  },  // 形容詞
+  { text: "とけい",     hint: "時計"  },  // モノ
+  { text: "うさぎ",     hint: "兎"    },  // 動物
+  { text: "ごはん",     hint: "ご飯"  },  // 食
+  { text: "かぞく",     hint: "家族"  },  // 人
+  { text: "たかい",     hint: "高い"  },  // 形容詞
+  { text: "めがね",     hint: "眼鏡"  },  // モノ
+  { text: "きつね",     hint: "狐"    },  // 動物
+  { text: "やさい",     hint: "野菜"  },  // 食
+  { text: "あたま",     hint: "頭"    },  // からだ
+  { text: "あたらしい", hint: "新しい"},  // 形容詞
+  { text: "かばん",     hint: "鞄"    },  // モノ
+  { text: "ひつじ",     hint: "羊"    },  // 動物
+  { text: "くだもの",   hint: "果物"  },  // 食
+  { text: "こころ",     hint: "心"    },  // からだ
+  { text: "たのしい",   hint: "楽しい"},  // 形容詞
+  { text: "さいふ",     hint: "財布"  },  // モノ
+  { text: "きのう",     hint: "昨日"  },  // 時間
+  { text: "からだ",     hint: "体"    },  // からだ
+  { text: "いもうと",   hint: "妹"    },  // 人
+  { text: "あした",     hint: "明日"  },  // 時間
 ];
 
 const ENGLISH_WORDS = [
