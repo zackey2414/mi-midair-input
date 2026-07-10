@@ -34,21 +34,20 @@ const DIR_LABELS = ["center", "left", "up", "right", "down"];
 const isAlpha = (c) => (c >= "a" && c <= "z") || (c >= "A" && c <= "Z");
 const show = (c) => (c === " " ? "⎵" : c || "—");
 
-// --- 運指テーブル: extend(T/I/M/P の組み合わせ) → 行。JPの運指テーブルと1:1で対応させ、
-//     日本語のかな行(あ/か/さ/た/な/は/ま/や/ら/わ/、)と同じ指の動きで行を切り替えられるようにする ---
-// JP と 1:1 対応 (同じ指の組み合わせで JP の同じ行番号を選択できる)
+// --- 運指テーブル: extend(T/I/M/P の組み合わせ) → 行。JP と 1:1 対応。
+// 薬指(R)は中指と連動しやすいため使わない。
 export const DEFAULT_ROW_MAP = [
-  { row: "1",  extend: ["T"]                   },
-  { row: "2",  extend: ["I"]                   },
-  { row: "3",  extend: ["I", "M"]              },
-  { row: "4",  extend: ["M", "R"]              },
-  { row: "5",  extend: ["R", "P"]              },
-  { row: "6",  extend: ["T", "I"]              },
-  { row: "7",  extend: ["I", "M", "R"]         },
-  { row: "8",  extend: ["M", "R", "P"]         },
-  { row: "9",  extend: ["I", "M", "R", "P"]   },
-  { row: "10", extend: ["T", "I", "M"]         },
-  { row: "11", extend: ["P"]                   },
+  { row: "1",  extend: ["T"]                },
+  { row: "2",  extend: ["I"]                },
+  { row: "3",  extend: ["T", "I"]           },
+  { row: "4",  extend: ["I", "M"]           },
+  { row: "5",  extend: ["T", "I", "M"]      },
+  { row: "6",  extend: ["T", "P"]           },
+  { row: "7",  extend: ["I", "P"]           },
+  { row: "8",  extend: ["T", "I", "P"]      },
+  { row: "9",  extend: ["I", "M", "P"]      },
+  { row: "10", extend: ["T", "I", "M", "P"] },
+  { row: "11", extend: ["P"]                },
 ];
 export let rowMap = JSON.parse(JSON.stringify(DEFAULT_ROW_MAP));
 
@@ -572,7 +571,7 @@ export function renderEnglishSettings() {
 
   const legend = document.createElement("div");
   legend.className = "jp-cfg-legend";
-  legend.innerHTML = "<b>T</b>=Thumb &nbsp;<b>I</b>=Index &nbsp;<b>M</b>=Middle &nbsp;<b>R</b>=Ring &nbsp;<b>P</b>=Pinky";
+  legend.innerHTML = "<b>T</b>=Thumb &nbsp;<b>I</b>=Index &nbsp;<b>M</b>=Middle &nbsp;<b>P</b>=Pinky";
   root.appendChild(legend);
 
   const table = document.createElement("div");

@@ -65,20 +65,21 @@ const HANDAKUTEN_MAP = Object.fromEntries([
   ["は","ぱ"],["ひ","ぴ"],["ふ","ぷ"],["へ","ぺ"],["ほ","ぽ"],
 ]);
 
-// --- 運指テーブル: extend(T/I/M/R/P の組み合わせ) → 行 ---
-// EN と 1:1 対応 (同じ指の組み合わせで同じ行番号を選択できる)
+// --- 運指テーブル: extend(T/I/M/P の組み合わせ) → 行 ---
+// 薬指(R)は解剖学的に中指と連動して独立制御が難しいため使わない。
+// T/I/M/P の 4 本で 11 行を網羅する。
 export const DEFAULT_ROW_MAP = [
-  { row: "あ", extend: ["T"]                   },
-  { row: "か", extend: ["I"]                   },
-  { row: "さ", extend: ["I", "M"]              },
-  { row: "た", extend: ["M", "R"]              },
-  { row: "な", extend: ["R", "P"]              },
-  { row: "は", extend: ["T", "I"]              },
-  { row: "ま", extend: ["I", "M", "R"]         },
-  { row: "や", extend: ["M", "R", "P"]         },
-  { row: "ら", extend: ["I", "M", "R", "P"]   },
-  { row: "わ", extend: ["T", "I", "M"]         },
-  { row: "、", extend: ["P"]                   },
+  { row: "あ", extend: ["T"]               },
+  { row: "か", extend: ["I"]               },
+  { row: "さ", extend: ["T", "I"]          },
+  { row: "た", extend: ["I", "M"]          },
+  { row: "な", extend: ["T", "I", "M"]     },
+  { row: "は", extend: ["T", "P"]          },
+  { row: "ま", extend: ["I", "P"]          },
+  { row: "や", extend: ["T", "I", "P"]     },
+  { row: "ら", extend: ["I", "M", "P"]     },
+  { row: "わ", extend: ["T", "I", "M", "P"]},
+  { row: "、", extend: ["P"]               },
 ];
 export let rowMap = JSON.parse(JSON.stringify(DEFAULT_ROW_MAP));
 
@@ -549,7 +550,7 @@ function updateJapanese(hand, now) {
   if (isRest) {
     rowPending = null;
     if (hand.isOpen) lastOpenPos = hand.palmPoint;
-    jpStatus(hand.fingers.pinky ? "R+P: な/や/ら or P: 句" : "T/I/M/R → あ/か/さ/た行");
+    jpStatus(hand.fingers.pinky ? "P: は/ま/や/ら/わ/句行" : "T/I/M → あ/か/さ/た/な行");
     return;
   }
 
@@ -794,7 +795,7 @@ export function renderJapaneseSettings() {
 
   const legend = document.createElement("div");
   legend.className = "jp-cfg-legend";
-  legend.innerHTML = "<b>T</b>=Thumb &nbsp;<b>I</b>=Index &nbsp;<b>M</b>=Middle &nbsp;<b>R</b>=Ring &nbsp;<b>P</b>=Pinky";
+  legend.innerHTML = "<b>T</b>=Thumb &nbsp;<b>I</b>=Index &nbsp;<b>M</b>=Middle &nbsp;<b>P</b>=Pinky";
   root.appendChild(legend);
 
   const sk = (k) => (!k ? "—" : (k === " " || k === "　") ? "⎵" : k);

@@ -18,9 +18,10 @@ export function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-// 指先が PIP より手首から遠ければ「伸びている」
-function fingerExtended(lm, tip, pip) {
-  return dist(lm[tip], lm[LM.WRIST]) > dist(lm[pip], lm[LM.WRIST]) * 1.05;
+// 指先が PIP より手首から遠ければ「伸びている」。
+// factor: 小指は短く比率が低く出るため 1.0 に緩める。他の指は 1.05 のまま。
+function fingerExtended(lm, tip, pip, factor = 1.05) {
+  return dist(lm[tip], lm[LM.WRIST]) > dist(lm[pip], lm[LM.WRIST]) * factor;
 }
 
 // 親指: 先端が中指付け根から遠ければ「伸びている」(threshold は正規化距離)
@@ -100,7 +101,7 @@ export class HandState {
       index:  fingerExtended(lm, LM.INDEX_TIP,    LM.INDEX_PIP),
       middle: fingerExtended(lm, LM.MIDDLE_TIP,   LM.MIDDLE_PIP),
       ring:   fingerExtended(lm, LM.RING_TIP,     LM.RING_PIP),
-      pinky:  fingerExtended(lm, LM.PINKY_TIP,    LM.PINKY_PIP),
+      pinky:  fingerExtended(lm, LM.PINKY_TIP,    LM.PINKY_PIP,  1.0),
     };
 
     // Layer 1: 位置 (px / 正規化座標)
