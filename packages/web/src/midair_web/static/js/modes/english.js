@@ -505,17 +505,6 @@ export default {
         g.fillStyle = rimColor;
         g.beginPath(); g.arc(px, py, 5, 0, Math.PI * 2); g.fill();
 
-        // 修飾状態バッジ (A) - フリック後の大文字/小文字トグル状態
-        if (_modState > 0) {
-          g.font = "bold 36px system-ui";
-          g.textAlign = "center";
-          g.textBaseline = "bottom";
-          g.shadowColor = "rgba(0,0,0,0.9)";
-          g.shadowBlur = 8;
-          g.fillStyle = "#5bff8c";
-          g.fillText("A", px, py - r - 4);
-          g.shadowBlur = 0;
-        }
 
         // フリック方向の文字ラベルを円周外周に表示 (JP と同様)
         { const chars = ROWS[_visRow];
